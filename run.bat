@@ -4,6 +4,46 @@ cd /d "%~dp0"
 
 set PORT=8080
 
+REM --- Pull the latest version from git, if this is a git checkout ---
+if not exist ".git" goto :skipupdate
+where git >nul 2>nul
+if errorlevel 1 goto :nogit
+
+echo Checking for updates...
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set CURRENT_BRANCH=%%b
+git pull --ff-only origin %CURRENT_BRANCH%
+if errorlevel 1 (
+    echo.
+    echo Could not pull the latest changes - you may be offline, or have
+    echo local edits that don't cleanly fast-forward. Continuing with the
+    echo files already on disk.
+    echo.
+)
+goto :afterupdate
+
+:nogit
+echo Git is not installed - skipping update check.
+echo Install Git from https://git-scm.com if you want this to auto-update.
+goto :afterupdate
+
+:skipupdate
+echo Not a git checkout - skipping update check.
+
+:afterupdate
+
+REM --- Build, if this project ever grows a build step (no-op today) ---
+if not exist "package.json" goto :afterbuild
+where npm >nul 2>nul
+if errorlevel 1 goto :afterbuild
+echo Installing dependencies...
+call npm install
+findstr /c:"\"build\":" package.json >nul 2>nul
+if errorlevel 1 goto :afterbuild
+echo Building...
+call npm run build
+
+:afterbuild
+
 where python >nul 2>nul
 if %errorlevel%==0 (
     echo Starting local server with Python...
