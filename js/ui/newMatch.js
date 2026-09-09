@@ -105,6 +105,6 @@ export function renderNewMatch(container, navigate) {
     match.innings.push(newInnings(match, 1));
     await saveMatch(match);
     toast('Match created');
-    navigate(`#/match/${match.id}/score`);
+    navigate(`#/match/${match.id}/innings`);
   });
 }

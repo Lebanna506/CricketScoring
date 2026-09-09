@@ -5,8 +5,13 @@ export function uid(prefix = 'id') {
 }
 
 export const SESSIONS = ['morning', 'afternoon', 'evening'];
+export const OVERS_PER_SESSION = 30;
 
-/** Convert (overs, ball) -> total legal balls bowled. ball is 1-6. */
+export function oppositeSide(side) {
+  return side === 'home' ? 'away' : 'home';
+}
+
+/** Convert (completed overs, ball) -> total legal balls bowled. ball is 1-6. */
 export function toBalls(overs, ball) {
   return overs * 6 + (ball || 0);
 }
@@ -23,13 +28,26 @@ export function ballsToOversDecimalForRR(balls) {
   return balls / 6;
 }
 
+/** Parse a user-typed "10.4" style string into { oversCompleted, ball }. */
+export function parseOverBall(str) {
+  const s = String(str ?? '').trim();
+  const [wholePart, ballPart] = s.split('.');
+  const oversCompleted = Math.max(0, parseInt(wholePart, 10) || 0);
+  const ball = Math.max(0, Math.min(6, parseInt(ballPart, 10) || 0));
+  return { oversCompleted, ball };
+}
+
+export function emptySessionRecord() {
+  return { lostMinutes: 0, lost: false };
+}
+
 export function newMatch({ homeTeam, awayTeam, venue, startDate, scheduledDays }) {
   const days = [];
   for (let i = 1; i <= (scheduledDays || 5); i++) {
     days.push({
       dayNumber: i,
       date: null,
-      weather: { morning: 0, afternoon: 0, evening: 0 },
+      sessions: { morning: emptySessionRecord(), afternoon: emptySessionRecord(), evening: emptySessionRecord() },
     });
   }
   return {
@@ -44,25 +62,31 @@ export function newMatch({ homeTeam, awayTeam, venue, startDate, scheduledDays }
     lineups: { home: [], away: [] },
     innings: [],
     days,
+    currentSession: { day: 1, session: 'morning' },
     result: { status: 'in_progress', text: '', winner: null, manualNote: '' },
-    activeInningsIndex: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 }
 
+export function advanceSession({ day, session }) {
+  const idx = SESSIONS.indexOf(session);
+  if (idx === SESSIONS.length - 1) return { day: day + 1, session: SESSIONS[0] };
+  return { day, session: SESSIONS[idx + 1] };
+}
+
 /**
- * Determine batting/bowling team for a given innings number (1-4) based on toss.
- * side that batted 1st = winner of toss's choice (or the other side if they chose to bowl).
+ * Determine which side bats in a given innings (1-4), derived fresh every time
+ * from the toss and any follow-on decision - never cached on the innings
+ * object, so editing the toss later is reflected everywhere immediately.
  */
-export function battingSideForInnings(match, inningsNumber) {
+export function battingSideForInnings(match, inningsNumber, { followOnOverride } = {}) {
   const { wonBy, decision } = match.toss;
   if (!wonBy || !decision) return null;
-  const firstBat = decision === 'bat' ? wonBy : (wonBy === 'home' ? 'away' : 'home');
-  const secondBat = firstBat === 'home' ? 'away' : 'home';
-  // innings 1 & 3 batted by firstBat, 2 & 4 by secondBat, UNLESS follow-on flips 3rd innings.
-  const followOnInnings1 = match.innings.find((i) => i.number === 1);
-  const enforcedFollowOn = match.innings.some((i) => i.number === 3 && i.followOn);
+  const firstBat = decision === 'bat' ? wonBy : oppositeSide(wonBy);
+  const secondBat = oppositeSide(firstBat);
+  const i3 = match.innings.find((i) => i.number === 3);
+  const enforcedFollowOn = followOnOverride !== undefined ? followOnOverride : !!(i3 && i3.followOn);
   if (inningsNumber === 1) return firstBat;
   if (inningsNumber === 2) return secondBat;
   if (inningsNumber === 3) return enforcedFollowOn ? secondBat : firstBat;
@@ -70,35 +94,47 @@ export function battingSideForInnings(match, inningsNumber) {
   return null;
 }
 
+export function bowlingSideForInnings(match, inningsNumber, opts) {
+  const side = battingSideForInnings(match, inningsNumber, opts);
+  return side ? oppositeSide(side) : null;
+}
+
+/** How many times has this innings' batting team batted, including this innings - i.e. "1st"/"2nd". */
+export function inningsOrdinalForTeam(match, inningsNumber) {
+  const team = battingSideForInnings(match, inningsNumber);
+  if (!team) return 1;
+  let count = 0;
+  for (let n = 1; n <= inningsNumber; n++) {
+    if (battingSideForInnings(match, n) === team) count += 1;
+  }
+  return count;
+}
+
 export function newInnings(match, number, { followOn = false } = {}) {
-  const battingTeam = battingSideForInnings({ ...match, innings: [...match.innings, { number, followOn }] }, number);
-  const bowlingTeam = battingTeam === 'home' ? 'away' : 'home';
   return {
     number,
-    battingTeam,
-    bowlingTeam,
     declared: false,
-    allOut: false,
     followOn,
-    overs: [], // { overNumber, runs, wickets, extras, day, session, bowler }
-    fallOfWickets: [], // { wicketNumber, over, ball, score, batsmanOut, howOut, bowler, fielder }
+    overs: [], // { id, overNumber, runs, day, session, ballNumber }
+    fallOfWickets: [], // { id, wicketNumber, oversCompleted, ball, score, batsman1, batsman2, outBatsman, inBatsman }
+    milestonesLog: [], // { milestone, oversCompleted, ball } - confirmed by the user when crossed
+    currentBatsmen: ['', ''],
+    currentBallNumber: 1, // a new ball starts every innings
   };
 }
 
-export function newOverEntry({ overNumber, runs, wickets, extras, day, session, bowler }) {
+export function newOverEntry({ overNumber, runs, day, session, ballNumber }) {
   return {
     id: uid('over'),
     overNumber,
     runs: Number(runs) || 0,
-    wickets: Number(wickets) || 0,
-    extras: Number(extras) || 0,
     day: day || 1,
     session: session || 'morning',
-    bowler: bowler || '',
+    ballNumber: ballNumber || 1,
   };
 }
 
-export function newFowEntry({ wicketNumber, oversCompleted, ball, score, batsmanOut, howOut, bowler, fielder }) {
+export function newFowEntry({ wicketNumber, oversCompleted, ball, score, batsman1, batsman2, outBatsman, inBatsman }) {
   return {
     id: uid('fow'),
     wicketNumber,
@@ -108,10 +144,10 @@ export function newFowEntry({ wicketNumber, oversCompleted, ball, score, batsman
     oversCompleted: Number(oversCompleted) || 0,
     ball: Number(ball) || 0,
     score: Number(score) || 0,
-    batsmanOut: batsmanOut || '',
-    howOut: howOut || '',
-    bowler: bowler || '',
-    fielder: fielder || '',
+    batsman1: batsman1 || '',
+    batsman2: batsman2 || '',
+    outBatsman: outBatsman || '',
+    inBatsman: inBatsman || '',
   };
 }
 

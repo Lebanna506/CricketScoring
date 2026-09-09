@@ -34,9 +34,10 @@ async function route() {
   }
   if (parts[0] === 'match' && parts[1]) {
     const matchId = parts[1];
-    const tab = parts[2] || 'score';
+    const tab = parts[2] || 'innings';
+    const sub = parts[3] || null;
     document.title = 'Test Cricket Scorer';
-    await renderScorer(view, navigate, matchId, tab);
+    await renderScorer(view, navigate, matchId, tab, sub);
     return;
   }
   await renderLibrary(view, navigate);

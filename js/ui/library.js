@@ -53,7 +53,7 @@ export async function renderLibrary(container, navigate) {
     if (!btn) return;
     const action = btn.dataset.action;
     if (action === 'new-match') navigate('#/new');
-    if (action === 'open') navigate(`#/match/${btn.dataset.id}/score`);
+    if (action === 'open') navigate(`#/match/${btn.dataset.id}/innings`);
     if (action === 'delete') {
       if (confirm('Delete this match from this device? (Export it first if you want to keep a copy.)')) {
         await deleteMatch(btn.dataset.id);
@@ -75,7 +75,7 @@ export async function renderLibrary(container, navigate) {
         const match = await importMatch();
         await saveMatch(match);
         toast('Match imported');
-        navigate(`#/match/${match.id}/score`);
+        navigate(`#/match/${match.id}/innings`);
       } catch (err) {
         if (err?.name !== 'AbortError') toast('Import failed: ' + err.message);
       }

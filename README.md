@@ -11,35 +11,51 @@ rewrite.
 
 ## What it does
 
-Reproduces the spreadsheet's feature set with a much faster data-entry model:
-
 - **New match wizard**: teams, venue, dates, scheduled length (1-5 days),
-  toss, optional line-ups.
-- **Over-by-over entry**: tap in runs + wickets for each completed over
-  (day/session tagged, optional bowler). No ball-by-ball logging required —
-  this mirrors how the spreadsheet was actually used, just faster to type on
-  a touchscreen.
-- **Fall of wickets**: when a wicket is entered, a quick form captures the
-  score, the ball it fell on, batsman/how out/bowler/fielder (all optional
-  except the score) — this drives the partnerships table.
-- **Partnerships**: runs, balls and over-range for every wicket, including
-  the current unbroken stand, with the best partnership highlighted.
-- **Run rate & team milestones**: live run rate, and the pace to every team
-  50/100/150... (balls faced and run rate for that 50-run segment) —
-  interpolated from the over-by-over data, so no extra entry is needed.
-- **Sessions & days**: runs/overs/wickets/run-rate broken down by
-  morning/afternoon/evening session and by day, plus a day-by-day summary
-  and a place to log minutes lost to weather per session.
+  toss, optional line-ups (used only as name suggestions for batsmen — the
+  app doesn't track bowlers, extras, or fielding stats).
+- **Innings tab with 4 sub-tabs**, one per innings, named e.g. "Australia 1st
+  Innings" / "England 1st Innings" / "Australia 2nd Innings". Each shows that
+  innings' full over list (score/run-rate at every over), fall of wickets,
+  partnerships and milestones.
+- **One-tap over entry**: a 0-10 number pad for runs scored that over, plus a
+  "10+" button for the rare bigger over. No typing, no separate save step.
+- **Wicket button**: tap it, say who's out (of the two current batsmen) and
+  the score/over.ball it happened, then name the incoming batsman. That's the
+  only place player names are used — purely to label partnerships.
+- **Partnerships**: shown as the two batsmen involved, runs, balls and run
+  rate — the current stand is just shown as-is, not flagged "unbroken". The
+  top-level Partnerships tab compares every wicket's stand across all 4
+  innings side by side.
+- **Team milestones**: when an over pushes the score past a 50/100/150...,
+  the app asks which ball it happened on — so the pace-to-milestone numbers
+  are exact, not estimated. The top-level Milestones tab compares them across
+  all 4 innings.
+- **End Session / New Ball buttons**: press "End Session" and every over from
+  then on is tagged with the next session automatically (no per-over
+  day/session picker). "New Ball" does the same for ball changes, with a
+  fresh new ball at the start of every innings by default.
+- **Sessions tab**: a match-wide session-by-session table (all innings
+  combined) alongside the existing per-innings breakdown, a day-by-day
+  summary, and time-lost-to-weather entry (hours/minutes, or mark a session
+  completely lost). Each session's expected 30 overs is shown with a
+  green/red/white +/- badge — reduced by 2 overs for every innings change
+  that happened during it.
 - **Follow-on**: automatically flags when a lead reaches the Laws-of-Cricket
   follow-on margin for the scheduled match length (200 runs for a 5-day
   Test, 150 for 3-4 days, 100 for 2 days, 75 for 1 day) and asks whether to
-  enforce it when you start the next innings.
-- **Live match-status sentence**: "England lead by 45 runs with 6 wickets
-  remaining in the 3rd innings", "India won by an innings and 12 runs!", etc.
-  — generated automatically, with a manual override for a draw/abandonment
-  the logic can't infer on its own (e.g. "Drawn — stumps, Day 5").
-- **Undo last over** and **declare innings**, so mis-entries and
-  declarations are easy to handle mid-match.
+  enforce it when you start the next innings — this correctly reorders which
+  team bats in the 3rd/4th innings.
+- **Scorecard tab**: one line per innings — "leads/trails by N with W
+  wickets remaining" (or "require N to win" for the 4th) — plus a live
+  match-status banner shown on every tab ("India won by an innings and 12
+  runs!", "England require 45 more runs to win with 6 wickets remaining"),
+  with a manual override for a draw/abandonment the logic can't infer on its
+  own.
+- **Undo last over**, **declare innings**, and editable **Match Info** at any
+  time — including the toss, which every innings' batting/bowling team is
+  derived from live, so changing it retroactively fixes the whole match
+  instead of only new innings.
 
 ## Running it
 

@@ -99,6 +99,7 @@ input, select, textarea {
   font-size: 1rem;
 }
 textarea { resize: vertical; min-height: 70px; }
+input[type="checkbox"] { width: auto; padding: 0; }
 .field { margin-bottom: 12px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
@@ -186,7 +187,46 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
   border-radius: 8px; z-index: 200; font-size: 0.9rem;
 }
 
+.sub-tabs {
+  margin-top: -4px;
+}
+.sub-tabs button {
+  font-size: 0.82rem;
+  padding: 7px 12px;
+}
+
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.numpad-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  padding: 16px 4px;
+  border-radius: 10px;
+  font-size: 1.3rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.numpad-btn:active { transform: translateY(1px); background: var(--accent-2); }
+.numpad-btn.numpad-more { font-size: 1rem; background: var(--panel); color: var(--muted); }
+
+.badge-ahead { color: var(--accent); font-weight: 600; }
+.badge-behind { color: var(--danger); font-weight: 600; }
+.badge-exact { color: var(--text); }
+
+.summary-row { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.summary-row:last-child { border-bottom: none; }
+
 footer.app-footer { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 18px; }
+
+@media (min-width: 500px) {
+  .numpad { grid-template-columns: repeat(6, 1fr); }
+}
 
 @media (min-width: 700px) {
   main { padding: 24px; }
