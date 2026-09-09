@@ -2,7 +2,7 @@
 // (see js/storage.js), not here - this only caches the static app files so
 // the app itself keeps working with no network at all.
 
-const CACHE_VERSION = 'cricket-scorer-v1';
+const CACHE_VERSION = 'cricket-scorer-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -39,18 +39,18 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // Network-first: always prefer the latest file when online (this app is
+  // actively updated via git pull), only falling back to the cached copy
+  // when there's genuinely no connection.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.ok) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
-          }
-          return networkResponse;
-        })
-        .catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.ok) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, clone));
+        }
+        return networkResponse;
+      })
+      .catch(() => caches.match(event.request))
   );
 });

@@ -9,14 +9,22 @@ if not exist ".git" goto :skipupdate
 where git >nul 2>nul
 if errorlevel 1 goto :nogit
 
-echo Checking for updates...
 for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set CURRENT_BRANCH=%%b
+echo Checking for updates on branch "%CURRENT_BRANCH%"...
 git pull --ff-only origin %CURRENT_BRANCH%
 if errorlevel 1 (
     echo.
-    echo Could not pull the latest changes - you may be offline, or have
-    echo local edits that don't cleanly fast-forward. Continuing with the
-    echo files already on disk.
+    echo ****************************************************************
+    echo  Could not pull the latest changes - you may be offline, have
+    echo  local edits that don't cleanly fast-forward, or "%CURRENT_BRANCH%"
+    echo  might not be the branch you expect to be on.
+    echo  Continuing with the files already on disk - they may be OLD.
+    echo ****************************************************************
+    echo.
+    pause
+) else (
+    echo.
+    for /f "delims=" %%c in ('git log -1 --oneline 2^>nul') do echo Now at: %%c
     echo.
 )
 goto :afterupdate
