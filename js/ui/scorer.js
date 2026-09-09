@@ -816,8 +816,8 @@ function renderInfoTab(el, match, rerender, navigate) {
         <div class="grid cols-2">
           <div class="field"><label>Toss won by</label>
             <select name="tossWonBy">
-              <option value="home" ${match.toss.wonBy === 'home' ? 'selected' : ''}>${esc(match.homeTeam)}</option>
-              <option value="away" ${match.toss.wonBy === 'away' ? 'selected' : ''}>${esc(match.awayTeam)}</option>
+              <option value="home" id="toss-home-option" ${match.toss.wonBy === 'home' ? 'selected' : ''}>${esc(match.homeTeam)}</option>
+              <option value="away" id="toss-away-option" ${match.toss.wonBy === 'away' ? 'selected' : ''}>${esc(match.awayTeam)}</option>
             </select>
           </div>
           <div class="field"><label>Elected to</label>
@@ -828,8 +828,8 @@ function renderInfoTab(el, match, rerender, navigate) {
           </div>
         </div>
         <div class="grid cols-2">
-          <div class="field"><label>${esc(match.homeTeam)} line-up</label><textarea name="homeLineup">${esc((match.lineups.home || []).join('\n'))}</textarea></div>
-          <div class="field"><label>${esc(match.awayTeam)} line-up</label><textarea name="awayLineup">${esc((match.lineups.away || []).join('\n'))}</textarea></div>
+          <div class="field"><label id="home-lineup-label">${esc(match.homeTeam)} line-up</label><textarea name="homeLineup">${esc((match.lineups.home || []).join('\n'))}</textarea></div>
+          <div class="field"><label id="away-lineup-label">${esc(match.awayTeam)} line-up</label><textarea name="awayLineup">${esc((match.lineups.away || []).join('\n'))}</textarea></div>
         </div>
         <button type="submit" class="btn primary">Save details</button>
       </form>
@@ -855,6 +855,18 @@ function renderInfoTab(el, match, rerender, navigate) {
     </div>
   `;
   el.replaceChildren(wrap);
+
+  const infoForm = wrap.querySelector('#info-form');
+  infoForm.homeTeam.addEventListener('input', () => {
+    const name = infoForm.homeTeam.value || 'Home team';
+    wrap.querySelector('#toss-home-option').textContent = name;
+    wrap.querySelector('#home-lineup-label').textContent = `${name} line-up`;
+  });
+  infoForm.awayTeam.addEventListener('input', () => {
+    const name = infoForm.awayTeam.value || 'Away team';
+    wrap.querySelector('#toss-away-option').textContent = name;
+    wrap.querySelector('#away-lineup-label').textContent = `${name} line-up`;
+  });
 
   wrap.querySelector('#info-form').addEventListener('submit', async (e) => {
     e.preventDefault();

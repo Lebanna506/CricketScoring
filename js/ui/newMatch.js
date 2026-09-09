@@ -43,8 +43,8 @@ export function renderNewMatch(container, navigate) {
           <div class="field">
             <label>Won by</label>
             <select name="tossWonBy">
-              <option value="home">Home team</option>
-              <option value="away">Away team</option>
+              <option value="home" id="toss-home-option">Home team</option>
+              <option value="away" id="toss-away-option">Away team</option>
             </select>
           </div>
           <div class="field">
@@ -80,9 +80,11 @@ export function renderNewMatch(container, navigate) {
   const awayInput = form.awayTeam;
   homeInput.addEventListener('input', () => {
     root.querySelector('#home-lineup-label').textContent = `${homeInput.value || 'Home'} line-up`;
+    root.querySelector('#toss-home-option').textContent = homeInput.value || 'Home team';
   });
   awayInput.addEventListener('input', () => {
     root.querySelector('#away-lineup-label').textContent = `${awayInput.value || 'Away'} line-up`;
+    root.querySelector('#toss-away-option').textContent = awayInput.value || 'Away team';
   });
 
   root.addEventListener('click', (e) => {
