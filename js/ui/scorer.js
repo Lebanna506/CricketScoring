@@ -85,14 +85,25 @@ export async function renderScorer(container, navigate, matchId, tab = 'innings'
   const contentEl = root.querySelector('#tab-content');
   const rerender = () => renderScorer(container, navigate, matchId, tab, sub);
 
-  switch (tab) {
-    case 'innings': renderInningsTab(contentEl, match, navigate, rerender, sub); break;
-    case 'scorecard': renderScorecardTab(contentEl, match); break;
-    case 'partnerships': renderPartnershipsCompareTab(contentEl, match); break;
-    case 'milestones': renderMilestonesCompareTab(contentEl, match); break;
-    case 'sessions': renderSessionsTab(contentEl, match, rerender); break;
-    case 'info': renderInfoTab(contentEl, match, rerender, navigate); break;
-    default: renderInningsTab(contentEl, match, navigate, rerender, sub);
+  try {
+    switch (tab) {
+      case 'innings': renderInningsTab(contentEl, match, navigate, rerender, sub); break;
+      case 'scorecard': renderScorecardTab(contentEl, match); break;
+      case 'partnerships': renderPartnershipsCompareTab(contentEl, match); break;
+      case 'milestones': renderMilestonesCompareTab(contentEl, match); break;
+      case 'sessions': renderSessionsTab(contentEl, match, rerender); break;
+      case 'info': renderInfoTab(contentEl, match, rerender, navigate); break;
+      default: renderInningsTab(contentEl, match, navigate, rerender, sub);
+    }
+  } catch (err) {
+    console.error('Failed to render tab', tab, err);
+    contentEl.innerHTML = `
+      <div class="card">
+        <h3>Something went wrong showing this tab</h3>
+        <p class="meta">${esc(err.message)}</p>
+        <p class="meta">This can happen with a match saved by an older version of the app. Try reopening it, or export it from the library first if you want to keep a backup.</p>
+      </div>
+    `;
   }
 }
 

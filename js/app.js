@@ -20,6 +20,21 @@ function parseHash() {
 }
 
 async function route() {
+  try {
+    await routeUnsafe();
+  } catch (err) {
+    console.error('Failed to render route', location.hash, err);
+    view.innerHTML = `
+      <div class="card">
+        <h3>Something went wrong</h3>
+        <p class="meta">${err.message ? err.message.replace(/[<>&]/g, '') : 'Unknown error'}</p>
+        <p><a href="#/">Back to your matches</a></p>
+      </div>
+    `;
+  }
+}
+
+async function routeUnsafe() {
   const parts = parseHash();
   view.scrollTo?.(0, 0);
   if (parts.length === 0) {

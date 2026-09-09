@@ -154,3 +154,86 @@ export function newFowEntry({ wicketNumber, oversCompleted, ball, score, batsman
 export function teamName(match, side) {
   return side === 'home' ? match.homeTeam : side === 'away' ? match.awayTeam : '';
 }
+
+/**
+ * Bring a match object loaded from storage/a file up to the current schema,
+ * filling in any fields that didn't exist in earlier versions of the app
+ * (e.g. matches saved before the Innings-tab rewrite). Safe to call on an
+ * already-current match - it's a no-op in that case.
+ */
+export function normalizeMatch(match) {
+  if (!match || typeof match !== 'object') return match;
+
+  match.lineups = match.lineups || { home: [], away: [] };
+  match.lineups.home = match.lineups.home || [];
+  match.lineups.away = match.lineups.away || [];
+  match.result = match.result || { status: 'in_progress', text: '', winner: null, manualNote: '' };
+  match.currentSession = match.currentSession && match.currentSession.day
+    ? match.currentSession
+    : { day: 1, session: 'morning' };
+
+  match.days = (match.days || []).map((d) => ({
+    dayNumber: d.dayNumber,
+    date: d.date ?? null,
+    sessions: d.sessions ? {
+      morning: normalizeSessionRecord(d.sessions.morning),
+      afternoon: normalizeSessionRecord(d.sessions.afternoon),
+      evening: normalizeSessionRecord(d.sessions.evening),
+    } : {
+      // Earlier versions stored a single "minutes lost" number per session
+      // (under `weather`) instead of {lostMinutes, lost}.
+      morning: normalizeSessionRecord(d.weather?.morning),
+      afternoon: normalizeSessionRecord(d.weather?.afternoon),
+      evening: normalizeSessionRecord(d.weather?.evening),
+    },
+  }));
+
+  match.innings = (match.innings || []).map(normalizeInnings);
+
+  return match;
+}
+
+function normalizeSessionRecord(value) {
+  if (value && typeof value === 'object') {
+    return { lostMinutes: Number(value.lostMinutes) || 0, lost: !!value.lost };
+  }
+  if (typeof value === 'number') return { lostMinutes: value, lost: false };
+  return emptySessionRecord();
+}
+
+function normalizeInnings(inn) {
+  return {
+    number: inn.number,
+    declared: !!inn.declared,
+    followOn: !!inn.followOn,
+    overs: (inn.overs || []).map((o, idx) => ({
+      id: o.id || uid('over'),
+      overNumber: o.overNumber ?? idx + 1,
+      runs: Number(o.runs) || 0,
+      day: o.day || 1,
+      session: o.session || 'morning',
+      ballNumber: o.ballNumber || 1,
+    })),
+    fallOfWickets: (inn.fallOfWickets || []).map(normalizeFow),
+    milestonesLog: inn.milestonesLog || [],
+    currentBatsmen: Array.isArray(inn.currentBatsmen) && inn.currentBatsmen.length === 2
+      ? inn.currentBatsmen
+      : ['', ''],
+    currentBallNumber: inn.currentBallNumber || 1,
+  };
+}
+
+function normalizeFow(w, idx) {
+  return {
+    id: w.id || uid('fow'),
+    wicketNumber: w.wicketNumber ?? idx + 1,
+    oversCompleted: w.oversCompleted ?? w.overNumber ?? 0,
+    ball: Number(w.ball) || 0,
+    score: Number(w.score) || 0,
+    batsman1: w.batsman1 || '',
+    batsman2: w.batsman2 || '',
+    // Earlier versions called this field batsmanOut.
+    outBatsman: w.outBatsman || w.batsmanOut || '',
+    inBatsman: w.inBatsman || '',
+  };
+}

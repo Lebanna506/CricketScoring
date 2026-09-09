@@ -6,6 +6,7 @@
 // for saving into OneDrive via the iPadOS Files app share sheet.
 
 import { saveFileHandle, getFileHandle } from './storage.js';
+import { normalizeMatch } from './model.js';
 
 export function hasFileSystemAccess() {
   return typeof window.showSaveFilePicker === 'function';
@@ -71,7 +72,7 @@ export async function importMatch() {
     });
     const file = await handle.getFile();
     const text = await file.text();
-    const match = JSON.parse(text);
+    const match = normalizeMatch(JSON.parse(text));
     await saveFileHandle(match.id, handle);
     return match;
   }
@@ -84,7 +85,7 @@ export async function importMatch() {
       if (!file) return reject(new Error('No file selected'));
       try {
         const text = await file.text();
-        resolve(JSON.parse(text));
+        resolve(normalizeMatch(JSON.parse(text)));
       } catch (err) {
         reject(err);
       }

@@ -1,6 +1,8 @@
 // IndexedDB-backed local match library. Works fully offline; this is the
 // "recent matches on this device" list, separate from file export/import.
 
+import { normalizeMatch } from './model.js';
+
 const DB_NAME = 'cricket-scoring';
 const DB_VERSION = 1;
 const MATCH_STORE = 'matches';
@@ -32,6 +34,7 @@ function tx(storeName, mode) {
 }
 
 export async function saveMatch(match) {
+  normalizeMatch(match);
   match.updatedAt = new Date().toISOString();
   const store = await tx(MATCH_STORE, 'readwrite');
   return new Promise((resolve, reject) => {
@@ -45,7 +48,7 @@ export async function loadMatch(id) {
   const store = await tx(MATCH_STORE, 'readonly');
   return new Promise((resolve, reject) => {
     const req = store.get(id);
-    req.onsuccess = () => resolve(req.result || null);
+    req.onsuccess = () => resolve(req.result ? normalizeMatch(req.result) : null);
     req.onerror = () => reject(req.error);
   });
 }
@@ -63,7 +66,7 @@ export async function listMatches() {
   const store = await tx(MATCH_STORE, 'readonly');
   return new Promise((resolve, reject) => {
     const req = store.getAll();
-    req.onsuccess = () => resolve((req.result || []).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')));
+    req.onsuccess = () => resolve((req.result || []).map(normalizeMatch).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '')));
     req.onerror = () => reject(req.error);
   });
 }
