@@ -167,7 +167,7 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
     if (btn) navigate(`#/match/${match.id}/innings/${btn.dataset.subtab}`);
   });
 
-  wireEditableNames(wrap, match, inn, rerender);
+  wireEditableNames(wrap, match, inn, rerender, battingLineup);
 
   const rrrInput = wrap.querySelector('#overs-remaining');
   if (rrrInput) {
@@ -416,26 +416,15 @@ function editableNameSpan(name, colorClass, dataAttrs) {
 }
 
 /** Click any batsman name (current pair or a historical fall-of-wicket entry) to rename it. */
-function wireEditableNames(wrap, match, inn, rerender) {
+function wireEditableNames(wrap, match, inn, rerender, battingLineup) {
   wrap.querySelectorAll('.editable-name').forEach((span) => {
     span.addEventListener('click', () => {
       const isCurrentRow = span.dataset.row === 'current';
       const currentValue = isCurrentRow
         ? (inn.currentBatsmen[Number(span.dataset.idx)] || '')
         : (inn.fallOfWickets.find((w) => w.id === span.dataset.fowId)?.[span.dataset.field] || '');
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = currentValue;
-      input.className = 'editable-name-input';
-      input.placeholder = 'Name';
-      span.replaceWith(input);
-      input.focus();
-      input.select();
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-      });
-      input.addEventListener('blur', async () => {
-        const newName = input.value.trim();
+
+      const commit = async (newName) => {
         if (isCurrentRow) {
           inn.currentBatsmen[Number(span.dataset.idx)] = newName;
         } else {
@@ -449,7 +438,47 @@ function wireEditableNames(wrap, match, inn, rerender) {
         }
         await persist(match);
         rerender();
-      }, { once: true });
+      };
+
+      if (battingLineup.length > 0) {
+        // A batting order was given in Match Info - always pick from it.
+        const select = document.createElement('select');
+        select.className = 'editable-name-input';
+        const blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = '- clear -';
+        select.appendChild(blank);
+        battingLineup.forEach((name) => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          if (name === currentValue) opt.selected = true;
+          select.appendChild(opt);
+        });
+        span.replaceWith(select);
+        select.focus();
+        let committed = false;
+        select.addEventListener('change', () => {
+          committed = true;
+          commit(select.value);
+        });
+        select.addEventListener('blur', () => {
+          if (!committed) rerender();
+        }, { once: true });
+      } else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentValue;
+        input.className = 'editable-name-input';
+        input.placeholder = 'Name';
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        });
+        input.addEventListener('blur', () => commit(input.value.trim()), { once: true });
+      }
     });
   });
 }
@@ -594,12 +623,7 @@ async function handleWicket(match, inn, battingLineup) {
             <div class="field"><label>Incoming batsman</label>
               <select name="name">
                 ${battingLineup.map((n) => `<option value="${esc(n)}" ${n === suggested ? 'selected' : ''}>${esc(n)}</option>`).join('')}
-                <option value="__other__">Someone else...</option>
               </select>
-            </div>
-            <div class="field" id="other-name-field" hidden>
-              <label>Name</label>
-              <input name="otherName" placeholder="Name" />
             </div>
           ` : `
             <div class="field"><label>Incoming batsman</label>
@@ -612,20 +636,9 @@ async function handleWicket(match, inn, battingLineup) {
       openModal(html, {
         onMount: (m) => {
           const form = m.querySelector('#newbat-form');
-          const select = form.querySelector('select[name=name]');
-          const otherField = m.querySelector('#other-name-field');
-          if (select) {
-            select.addEventListener('change', () => {
-              const isOther = select.value === '__other__';
-              otherField.hidden = !isOther;
-              if (isOther) form.otherName.focus();
-            });
-          }
           form.addEventListener('submit', (e) => {
             e.preventDefault();
-            const fd = new FormData(form);
-            let name = fd.get('name');
-            if (name === '__other__') name = fd.get('otherName') || '';
+            const name = new FormData(form).get('name') || '';
             closeModal();
             resolve(name.trim());
           });
