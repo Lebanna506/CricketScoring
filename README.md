@@ -12,20 +12,27 @@ rewrite.
 ## What it does
 
 - **New match wizard**: teams, venue, dates, scheduled length (1-5 days),
-  toss, optional line-ups (used only as name suggestions for batsmen — the
-  app doesn't track bowlers, extras, or fielding stats).
+  toss, optional batting order (used only as batsman names for partnerships —
+  the app doesn't track bowlers, extras, or fielding stats). Give a batting
+  order and the openers are filled in automatically when an innings starts.
 - **Innings tab with 4 sub-tabs**, one per innings, named e.g. "Australia 1st
-  Innings" / "England 1st Innings" / "Australia 2nd Innings". Each shows that
-  innings' full over list (score/run-rate at every over), fall of wickets,
-  partnerships and milestones.
-- **One-tap over entry**: a 0-10 number pad for runs scored that over, plus a
-  "10+" button for the rare bigger over. No typing, no separate save step.
+  Innings" / "England 1st Innings" / "Australia 2nd Innings" — laid out as a
+  dashboard (partnerships on the left, live score/entry and the over list on
+  the right) so the stats and the over-by-over data are visible together
+  without much scrolling.
+- **One-tap over entry**: a compact 3x4 keypad (1-9, M for a maiden, 10, and
+  10+ for the rare bigger over) sitting right beside the score — one tap
+  saves the over, no separate confirm step.
 - **Wicket button**: tap it, say who's out (of the two current batsmen) and
-  the score/over.ball it happened, then name the incoming batsman. That's the
-  only place player names are used — purely to label partnerships.
-- **Partnerships**: shown as the two batsmen involved, runs, balls and run
-  rate — the current stand is just shown as-is, not flagged "unbroken". The
-  top-level Partnerships tab compares every wicket's stand across all 4
+  the score/over.ball it happened, then pick the incoming batsman — if a
+  batting order was given, that's a dropdown defaulting to the next player
+  in it (with a "someone else" option for a surprise), otherwise a free-text
+  name.
+- **Partnerships & fall of wickets combined** into one list: each stand shows
+  the two batsmen, runs, balls and run rate. The current (unbroken) stand is
+  shown in white; once it ends, the dismissed batsman turns red and the one
+  who carried on turns green. Any name is clickable to correct a mistake.
+  The top-level Partnerships tab compares every wicket's stand across all 4
   innings side by side.
 - **Team milestones**: when an over pushes the score past a 50/100/150...,
   the app asks which ball it happened on — so the pace-to-milestone numbers

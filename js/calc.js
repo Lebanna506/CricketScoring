@@ -34,6 +34,23 @@ export function isInningsClosed(innings) {
   return innings.declared || innings.fallOfWickets.length >= 10;
 }
 
+/**
+ * The first name in `lineup` not yet accounted for in this innings (not
+ * currently batting, not already dismissed, not already sent in) - used to
+ * default the "incoming batsman" picker when a wicket falls.
+ */
+export function nextAvailableBatsman(lineup, innings) {
+  if (!lineup || lineup.length === 0) return '';
+  const used = new Set();
+  (innings.currentBatsmen || []).forEach((n) => { if (n) used.add(n); });
+  (innings.fallOfWickets || []).forEach((w) => {
+    if (w.batsman1) used.add(w.batsman1);
+    if (w.batsman2) used.add(w.batsman2);
+    if (w.inBatsman) used.add(w.inBatsman);
+  });
+  return lineup.find((n) => !used.has(n)) || '';
+}
+
 /** Find the saved over entry (if any) for a given over number in an innings. */
 function overEntryFor(innings, overNumber) {
   return innings.overs.find((o) => o.overNumber === overNumber) || null;

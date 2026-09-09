@@ -1,4 +1,4 @@
-import { newMatch, newInnings } from '../model.js';
+import { newMatch, newInnings, battingSideForInnings } from '../model.js';
 import { saveMatch } from '../storage.js';
 import { toast } from './common.js';
 
@@ -104,7 +104,12 @@ export function renderNewMatch(container, navigate) {
     match.toss = { wonBy: fd.get('tossWonBy'), decision: fd.get('tossDecision') };
     match.lineups.home = (fd.get('homeLineup') || '').split('\n').map((s) => s.trim()).filter(Boolean);
     match.lineups.away = (fd.get('awayLineup') || '').split('\n').map((s) => s.trim()).filter(Boolean);
-    match.innings.push(newInnings(match, 1));
+    const innings1 = newInnings(match, 1);
+    const openingSide = battingSideForInnings(match, 1);
+    const openers = (match.lineups[openingSide] || []).slice(0, 2);
+    while (openers.length < 2) openers.push('');
+    innings1.currentBatsmen = openers;
+    match.innings.push(innings1);
     await saveMatch(match);
     toast('Match created');
     navigate(`#/match/${match.id}/innings`);

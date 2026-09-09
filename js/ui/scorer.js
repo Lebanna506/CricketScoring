@@ -10,6 +10,7 @@ import {
   followOnThreshold, requiredRunRate, sortedOvers, overByOverSeries, ballSummary,
   inningsRelativeState, partnershipsComparison, milestonesComparison, sessionRecord,
   expectedOversForSession, expectedOversForDay, battingSideForInnings, oppositeSide,
+  nextAvailableBatsman,
 } from '../calc.js';
 import { esc, fmtRR, toast, openModal, closeModal } from './common.js';
 
@@ -29,6 +30,12 @@ function lastInnings(match) {
   return match.innings[match.innings.length - 1] || null;
 }
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 function inningsSubTabLabel(match, number) {
   const side = battingSideForInnings(match, number);
@@ -126,6 +133,7 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
   const subNumber = subParam ? Number(subParam) : last.number;
   const inn = getInnings(match, subNumber) || last;
   const isActive = inn.number === last.number;
+  const closed = isInningsClosed(inn);
   const battingSide = battingSideForInnings(match, inn.number);
   const battingLineup = match.lineups[battingSide] || [];
 
@@ -133,15 +141,24 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
     <div class="tabs sub-tabs" id="innings-subtabs">
       ${match.innings.map((i) => `<button data-subtab="${i.number}" class="${i.number === inn.number ? 'active' : ''}">${esc(inningsSubTabLabel(match, i.number))}</button>`).join('')}
     </div>
-    ${scoreHeroCard(match, inn)}
-    ${inn.number === 4 ? requiredRunRateCard(match, inn) : ''}
-    ${isActive && !isInningsClosed(inn) ? currentlyBattingCard(inn) : ''}
-    ${isActive ? (isInningsClosed(inn) ? nextInningsCard(match, inn) : actionsCard(inn)) : ''}
-    ${oversTableCard(inn)}
-    ${ballSummaryCard(inn)}
-    ${fowCard(inn)}
-    ${partnershipsCardInnings(inn)}
-    ${milestonesCardInnings(inn)}
+    <div class="innings-dashboard">
+      <div class="dash-left">
+        ${partnershipFowCard(inn)}
+        <div class="grid cols-2">
+          ${milestonesCardInnings(inn)}
+          ${ballSummaryCard(inn)}
+        </div>
+      </div>
+      <div class="dash-right">
+        <div class="score-and-pad">
+          ${scoreHeroCard(match, inn)}
+          ${isActive && !closed ? sidePanelCard(inn) : ''}
+        </div>
+        ${inn.number === 4 ? requiredRunRateCard(match, inn) : ''}
+        ${isActive && closed ? nextInningsCard(match, inn) : ''}
+        ${oversTableCard(inn)}
+      </div>
+    </div>
   `;
   el.replaceChildren(wrap);
 
@@ -150,12 +167,7 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
     if (btn) navigate(`#/match/${match.id}/innings/${btn.dataset.subtab}`);
   });
 
-  wrap.querySelectorAll('.batsman-input').forEach((input) => {
-    input.addEventListener('change', async () => {
-      inn.currentBatsmen[Number(input.dataset.idx)] = input.value.trim();
-      await persist(match);
-    });
-  });
+  wireEditableNames(wrap, match, inn, rerender);
 
   const rrrInput = wrap.querySelector('#overs-remaining');
   if (rrrInput) {
@@ -238,7 +250,7 @@ function scoreHeroCard(match, inn) {
   const sc = currentScore(inn);
   const closed = isInningsClosed(inn);
   return `
-    <div class="card">
+    <div class="card score-card">
       <div class="score-hero">
         <div>
           <div class="runs">${sc.runs}/${sc.wickets}</div>
@@ -264,38 +276,27 @@ function requiredRunRateCard(match, inn) {
   `;
 }
 
-function currentlyBattingCard(inn) {
-  return `
-    <div class="card">
-      <h3>Currently batting</h3>
-      <div class="grid cols-2">
-        <div class="field"><label>Batsman 1</label><input class="batsman-input" data-idx="0" value="${esc(inn.currentBatsmen[0])}" placeholder="Name" /></div>
-        <div class="field"><label>Batsman 2</label><input class="batsman-input" data-idx="1" value="${esc(inn.currentBatsmen[1])}" placeholder="Name" /></div>
-      </div>
-    </div>
-  `;
-}
-
-function actionsCard(inn) {
+function sidePanelCard(inn) {
   const cur = currentScore(inn);
   const nextOver = sortedOvers(inn).length + 1;
-  const numpadValues = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 'M', 10, '10+'];
   return `
-    <div class="card">
-      <h3>Over ${nextOver} - runs scored</h3>
-      <div class="numpad">
-        ${numpadValues.map((n) => `<button class="numpad-btn" data-action="set-runs" data-value="${n}">${n}</button>`).join('')}
-        <button class="numpad-btn numpad-more" data-action="set-runs-custom">10+</button>
+    <div class="card side-panel">
+      <div class="meta" style="margin-bottom:6px;">Over ${nextOver} - runs</div>
+      <div class="numpad-phone">
+        ${keys.map((k) => {
+          if (k === 'M') return `<button class="numpad-btn" data-action="set-runs" data-value="0" title="Maiden">M</button>`;
+          if (k === '10+') return `<button class="numpad-btn numpad-more" data-action="set-runs-custom">10+</button>`;
+          return `<button class="numpad-btn" data-action="set-runs" data-value="${k}">${k}</button>`;
+        }).join('')}
       </div>
-      <div class="btn-row" style="margin-top:14px;">
+      <div class="btn-row side-actions">
         <button class="btn warn" data-action="wicket" ${cur.wickets >= 10 ? 'disabled' : ''}>Wicket</button>
         <button class="btn secondary" data-action="end-session">End Session</button>
         <button class="btn secondary" data-action="new-ball">New Ball</button>
-        <button class="btn ghost" data-action="mark-session-lost">Mark Session Lost</button>
-      </div>
-      <div class="btn-row" style="margin-top:8px;">
-        <button class="btn warn" data-action="declare">Declare innings</button>
-        <button class="btn ghost" data-action="undo" ${sortedOvers(inn).length === 0 ? 'disabled' : ''}>Undo last over</button>
+        <button class="btn ghost" data-action="mark-session-lost">Session Lost</button>
+        <button class="btn warn" data-action="declare">Declare</button>
+        <button class="btn ghost" data-action="undo" ${sortedOvers(inn).length === 0 ? 'disabled' : ''}>Undo</button>
       </div>
     </div>
   `;
@@ -318,17 +319,25 @@ function nextInningsCard(match, inn) {
 }
 
 function oversTableCard(inn) {
-  const rows = overByOverSeries(inn).slice().reverse();
+  const rows = overByOverSeries(inn);
+  if (rows.length === 0) {
+    return `<div class="card"><h3>Overs</h3><p class="meta">No overs yet</p></div>`;
+  }
+  const columns = chunkArray(rows, 50);
   return `
     <div class="card">
       <h3>Overs</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Over</th><th>Runs</th><th>Score</th><th>RR</th></tr></thead>
-          <tbody>
-            ${rows.map((r) => `<tr><td>${r.overNumber}</td><td>${r.runs}</td><td>${r.cumRuns}/${r.cumWickets}</td><td>${fmtRR(r.runRate)}</td></tr>`).join('') || '<tr><td colspan="4" class="meta">No overs yet</td></tr>'}
-          </tbody>
-        </table>
+      <div class="overs-columns">
+        ${columns.map((col) => `
+          <div class="table-wrap overs-col">
+            <table class="compact-table">
+              <thead><tr><th>Ov</th><th>R</th><th>Score</th><th>RR</th></tr></thead>
+              <tbody>
+                ${col.map((r) => `<tr><td>${r.overNumber}</td><td>${r.runs}</td><td>${r.cumRuns}/${r.cumWickets}</td><td>${fmtRR(r.runRate)}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        `).join('')}
       </div>
     </div>
   `;
@@ -336,15 +345,14 @@ function oversTableCard(inn) {
 
 function ballSummaryCard(inn) {
   const rows = ballSummary(inn);
-  if (rows.length === 0) return '';
   return `
     <div class="card">
       <h3>By ball</h3>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>Ball</th><th>Overs</th><th>Runs</th><th>Wkts</th><th>RR</th></tr></thead>
+        <table class="compact-table">
+          <thead><tr><th>Ball</th><th>Ovs</th><th>R</th><th>W</th><th>RR</th></tr></thead>
           <tbody>
-            ${rows.map((r) => `<tr><td>${r.ballNumber}</td><td>${r.overs}</td><td>${r.runs}</td><td>${r.wickets}</td><td>${fmtRR(r.runRate)}</td></tr>`).join('')}
+            ${rows.map((r) => `<tr><td>${r.ballNumber}</td><td>${r.overs}</td><td>${r.runs}</td><td>${r.wickets}</td><td>${fmtRR(r.runRate)}</td></tr>`).join('') || '<tr><td colspan="5" class="meta">No overs yet</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -352,43 +360,98 @@ function ballSummaryCard(inn) {
   `;
 }
 
-function fowCard(inn) {
-  const fow = [...inn.fallOfWickets].sort((a, b) => a.wicketNumber - b.wicketNumber);
-  return `
-    <div class="card">
-      <h3>Fall of wickets</h3>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Wkt</th><th>Score</th><th>Over</th><th>Batsman out</th></tr></thead>
-          <tbody>
-            ${fow.map((w) => `<tr><td>${w.wicketNumber}</td><td>${w.score}</td><td>${w.oversCompleted}.${w.ball}</td><td>${esc(w.outBatsman) || '-'}</td></tr>`).join('') || '<tr><td colspan="4" class="meta">No wickets yet</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-}
-
-function partnershipsCardInnings(inn) {
+/** Combined fall-of-wickets + partnerships list: one row per stand, batsmen colored by status. */
+function partnershipFowCard(inn) {
   const parts = partnerships(inn);
   const best = bestPartnership(inn);
+  const fowByWicket = new Map(inn.fallOfWickets.map((w) => [w.wicketNumber, w]));
   return `
     <div class="card">
       <h3>Partnerships</h3>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Wkt</th><th>Batsmen</th><th>Runs</th><th>Balls</th><th>RR</th></tr></thead>
+          <thead><tr><th>Wkt</th><th>Batsmen</th><th>Runs</th><th>Balls</th><th>RR</th><th>Fell at</th></tr></thead>
           <tbody>
-            ${parts.map((p) => `<tr class="${best && p.wicketNumber === best.wicketNumber ? 'highlight' : ''}">
-              <td>${p.wicketNumber}</td>
-              <td>${esc(p.batsman1) || '-'} &amp; ${esc(p.batsman2) || '-'}</td>
-              <td>${p.runs}</td><td>${p.balls}</td><td>${fmtRR(p.runRate)}</td>
-            </tr>`).join('') || '<tr><td colspan="5" class="meta">No partnerships yet</td></tr>'}
+            ${parts.map((p) => partnershipRow(p, fowByWicket.get(p.wicketNumber), best)).join('') || '<tr><td colspan="6" class="meta">No partnerships yet</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>
   `;
+}
+
+function partnershipRow(p, fow, best) {
+  const highlight = best && p.broken && p.wicketNumber === best.wicketNumber ? 'highlight' : '';
+  let batsmenHtml;
+  if (!p.broken) {
+    batsmenHtml = `
+      ${editableNameSpan(p.batsman1, 'bat-neutral', { row: 'current', idx: '0' })}
+      &amp;
+      ${editableNameSpan(p.batsman2, 'bat-neutral', { row: 'current', idx: '1' })}
+    `;
+  } else {
+    const b1Out = !!fow && fow.batsman1 === fow.outBatsman;
+    const b2Out = !!fow && fow.batsman2 === fow.outBatsman;
+    batsmenHtml = `
+      ${editableNameSpan(p.batsman1, b1Out ? 'bat-out' : 'bat-notout', { row: 'fow', fowId: fow?.id, field: 'batsman1' })}
+      &amp;
+      ${editableNameSpan(p.batsman2, b2Out ? 'bat-out' : 'bat-notout', { row: 'fow', fowId: fow?.id, field: 'batsman2' })}
+    `;
+  }
+  const fellAt = fow ? `${fow.score} (${fow.oversCompleted}.${fow.ball})` : '-';
+  return `<tr class="${highlight}">
+    <td>${p.wicketNumber}</td>
+    <td>${batsmenHtml}</td>
+    <td>${p.runs}</td>
+    <td>${p.balls}</td>
+    <td>${fmtRR(p.runRate)}</td>
+    <td>${fellAt}</td>
+  </tr>`;
+}
+
+function editableNameSpan(name, colorClass, dataAttrs) {
+  const attrs = Object.entries(dataAttrs).map(([k, v]) => `data-${k}="${esc(v ?? '')}"`).join(' ');
+  const label = name ? esc(name) : '<span class="meta">Add name</span>';
+  return `<span class="editable-name ${colorClass}" ${attrs}>${label}</span>`;
+}
+
+/** Click any batsman name (current pair or a historical fall-of-wicket entry) to rename it. */
+function wireEditableNames(wrap, match, inn, rerender) {
+  wrap.querySelectorAll('.editable-name').forEach((span) => {
+    span.addEventListener('click', () => {
+      const isCurrentRow = span.dataset.row === 'current';
+      const currentValue = isCurrentRow
+        ? (inn.currentBatsmen[Number(span.dataset.idx)] || '')
+        : (inn.fallOfWickets.find((w) => w.id === span.dataset.fowId)?.[span.dataset.field] || '');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = currentValue;
+      input.className = 'editable-name-input';
+      input.placeholder = 'Name';
+      span.replaceWith(input);
+      input.focus();
+      input.select();
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      });
+      input.addEventListener('blur', async () => {
+        const newName = input.value.trim();
+        if (isCurrentRow) {
+          inn.currentBatsmen[Number(span.dataset.idx)] = newName;
+        } else {
+          const w = inn.fallOfWickets.find((x) => x.id === span.dataset.fowId);
+          if (w) {
+            const field = span.dataset.field;
+            const oldVal = w[field];
+            w[field] = newName;
+            if (oldVal && oldVal === w.outBatsman) w.outBatsman = newName;
+          }
+        }
+        await persist(match);
+        rerender();
+      }, { once: true });
+    });
+  });
 }
 
 function milestonesCardInnings(inn) {
@@ -397,10 +460,10 @@ function milestonesCardInnings(inn) {
     <div class="card">
       <h3>Milestones</h3>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>Runs</th><th>Reached at</th><th>Segment RR</th></tr></thead>
+        <table class="compact-table">
+          <thead><tr><th>Runs</th><th>At</th><th>RR</th></tr></thead>
           <tbody>
-            ${ms.map((m) => `<tr><td>${m.milestone}</td><td>${m.overs} ov</td><td>${fmtRR(m.runRateForSegment)}</td></tr>`).join('') || '<tr><td colspan="3" class="meta">No 50 reached yet</td></tr>'}
+            ${ms.map((m) => `<tr><td>${m.milestone}</td><td>${m.overs}</td><td>${fmtRR(m.runRateForSegment)}</td></tr>`).join('') || '<tr><td colspan="3" class="meta">None yet</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -520,25 +583,51 @@ async function handleWicket(match, inn, battingLineup) {
 
   let inBatsman = '';
   if (wicketNumber < 10) {
+    const suggested = nextAvailableBatsman(battingLineup, inn);
+    const hasLineup = battingLineup.length > 0;
     inBatsman = await new Promise((resolve) => {
       const html = `
         <h2>New batsman</h2>
         <p class="meta">${esc(outName)} is out.</p>
         <form id="newbat-form">
-          <div class="field"><label>Incoming batsman</label>
-            <input name="name" list="bat-list" placeholder="Name" autofocus />
-            <datalist id="bat-list">${battingLineup.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
-          </div>
+          ${hasLineup ? `
+            <div class="field"><label>Incoming batsman</label>
+              <select name="name">
+                ${battingLineup.map((n) => `<option value="${esc(n)}" ${n === suggested ? 'selected' : ''}>${esc(n)}</option>`).join('')}
+                <option value="__other__">Someone else...</option>
+              </select>
+            </div>
+            <div class="field" id="other-name-field" hidden>
+              <label>Name</label>
+              <input name="otherName" placeholder="Name" />
+            </div>
+          ` : `
+            <div class="field"><label>Incoming batsman</label>
+              <input name="name" placeholder="Name" autofocus />
+            </div>
+          `}
           <button type="submit" class="btn primary big">Confirm</button>
         </form>
       `;
       openModal(html, {
         onMount: (m) => {
-          m.querySelector('#newbat-form').addEventListener('submit', (e) => {
+          const form = m.querySelector('#newbat-form');
+          const select = form.querySelector('select[name=name]');
+          const otherField = m.querySelector('#other-name-field');
+          if (select) {
+            select.addEventListener('change', () => {
+              const isOther = select.value === '__other__';
+              otherField.hidden = !isOther;
+              if (isOther) form.otherName.focus();
+            });
+          }
+          form.addEventListener('submit', (e) => {
             e.preventDefault();
-            const name = (new FormData(e.target).get('name') || '').trim();
+            const fd = new FormData(form);
+            let name = fd.get('name');
+            if (name === '__other__') name = fd.get('otherName') || '';
             closeModal();
-            resolve(name);
+            resolve(name.trim());
           });
         },
       });

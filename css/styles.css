@@ -195,25 +195,27 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
   padding: 7px 12px;
 }
 
-.numpad {
+/* Compact phone-style keypad: 1-9, M (maiden/0), 10, 10+ = 12 keys, 3x4. */
+.numpad-phone {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  max-width: 216px;
 }
 .numpad-btn {
   appearance: none;
   border: 1px solid var(--border);
   background: var(--panel-alt);
   color: var(--text);
-  padding: 16px 4px;
-  border-radius: 10px;
-  font-size: 1.3rem;
+  padding: 10px 4px;
+  border-radius: 8px;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
 }
 .numpad-btn:active { transform: translateY(1px); background: var(--accent-2); }
-.numpad-btn.numpad-more { font-size: 1rem; background: var(--panel); color: var(--muted); }
+.numpad-btn.numpad-more { font-size: 0.82rem; background: var(--panel); color: var(--muted); }
 
 .badge-ahead { color: var(--accent); font-weight: 600; }
 .badge-behind { color: var(--danger); font-weight: 600; }
@@ -222,10 +224,48 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
 .summary-row { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .summary-row:last-child { border-bottom: none; }
 
+/* Innings tab dashboard: single column by default, two columns on wide screens. */
+.innings-dashboard { display: flex; flex-direction: column; gap: 14px; }
+.dash-left, .dash-right { display: flex; flex-direction: column; min-width: 0; }
+.dash-left { gap: 14px; }
+
+.score-and-pad { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.score-card { flex: 1 1 220px; margin-bottom: 0; }
+.side-panel { flex: 0 0 auto; width: 100%; max-width: 240px; margin-bottom: 0; }
+.side-actions { margin-top: 10px; }
+.side-actions .btn { padding: 7px 10px; font-size: 0.82rem; }
+
+/* Overs table split into columns of up to 50 rows each. */
+.overs-columns { display: flex; gap: 10px; flex-wrap: wrap; }
+.overs-col { flex: 1 1 150px; max-width: 200px; margin-bottom: 0; }
+
+.compact-table { font-size: 0.82rem; }
+.compact-table th, .compact-table td { padding: 4px 6px; }
+
+.editable-name {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  padding: 1px 2px;
+  border-radius: 3px;
+}
+.editable-name:hover { border-bottom-color: currentColor; background: var(--panel-alt); }
+.bat-neutral { color: var(--text); }
+.bat-out { color: var(--danger); }
+.bat-notout { color: var(--accent); }
+.editable-name-input {
+  width: auto;
+  min-width: 100px;
+  display: inline-block;
+  padding: 2px 4px;
+  font-size: inherit;
+}
+
 footer.app-footer { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 18px; }
 
-@media (min-width: 500px) {
-  .numpad { grid-template-columns: repeat(6, 1fr); }
+@media (min-width: 860px) {
+  .innings-dashboard { flex-direction: row; align-items: flex-start; }
+  .dash-left { flex: 0 0 42%; }
+  .dash-right { flex: 1 1 58%; }
 }
 
 @media (min-width: 700px) {
