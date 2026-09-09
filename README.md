@@ -51,8 +51,12 @@ work:
 - **Host it once, use it anywhere**: push this repo to GitHub Pages (or any
   static host) and open the URL. After the first visit it keeps working
   offline.
-- **On a PC, run it locally**: from this folder, `npx serve` (or
-  `python3 -m http.server`) and open `http://localhost:<port>`.
+- **On a PC, run it locally**: double-click `run.bat` in this folder — it
+  starts a local server (using Python or Node, whichever it finds) and opens
+  the app in your default browser. Leave the server window open while you
+  use the app; closing it stops the server. (Or do it manually: `npx serve`
+  or `python3 -m http.server` from this folder, then open
+  `http://localhost:<port>`.)
 - **On an iPad**: open the hosted URL in Safari, then *Share → Add to Home
   Screen*. It then launches full-screen like a native app and keeps working
   with the iPad in airplane mode.
