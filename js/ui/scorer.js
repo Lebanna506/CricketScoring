@@ -2,15 +2,15 @@ import { loadMatch, saveMatch, deleteMatch } from '../storage.js';
 import { exportMatch } from '../fileio.js';
 import {
   newOverEntry, newFowEntry, newInnings, teamName, SESSIONS, advanceSession,
-  parseOverBall, inningsOrdinalForTeam, emptySessionRecord,
+  inningsOrdinalForTeam, emptySessionRecord,
 } from '../model.js';
 import {
   currentScore, isInningsClosed, partnerships, bestPartnership, teamMilestones,
-  crossedMilestones, sessionSummary, matchSessionSummary, daySummaries, matchStatusText,
-  followOnThreshold, requiredRunRate, sortedOvers, overByOverSeries, ballSummary,
-  inningsRelativeState, partnershipsComparison, milestonesComparison, sessionRecord,
-  expectedOversForSession, expectedOversForDay, battingSideForInnings, oppositeSide,
-  nextAvailableBatsman,
+  teamCenturies, crossedMilestones, sessionSummary, matchSessionSummary, daySummaries,
+  matchStatusText, followOnThreshold, requiredRunRate, sortedOvers, overByOverSeries,
+  ballSummary, inningsRelativeState, partnershipsComparison, milestonesComparison,
+  centuriesComparison, sessionRecord, expectedOversForSession, expectedOversForDay,
+  battingSideForInnings, oppositeSide, availableBatsmen,
 } from '../calc.js';
 import { esc, fmtRR, toast, openModal, closeModal } from './common.js';
 
@@ -31,10 +31,53 @@ function lastInnings(match) {
 }
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+function ordinal(n) {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  const suffix = ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
+  return `${n}${suffix}`;
+}
+
 function chunkArray(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
+}
+
+// --- Over.ball picker: an editable over number plus a 7-button grid for the
+// ball within that over (.0-.6), used anywhere a modal needs to record the
+// exact moment something happened (a wicket, a milestone).
+
+function overBallField(name, defaultOver, defaultBall) {
+  return `
+    <div class="grid cols-2">
+      <div class="field"><label>Over</label><input name="${name}Over" type="number" min="0" value="${defaultOver}" required /></div>
+      <div class="field">
+        <label>Ball</label>
+        <div class="ball-grid" data-ball-group="${name}">
+          ${[0, 1, 2, 3, 4, 5, 6].map((b) => `<button type="button" class="ball-btn ${b === defaultBall ? 'selected' : ''}" data-ball="${b}">.${b}</button>`).join('')}
+        </div>
+        <input type="hidden" name="${name}Ball" value="${defaultBall}" />
+      </div>
+    </div>
+  `;
+}
+
+function wireBallGrids(container) {
+  container.querySelectorAll('[data-ball-group]').forEach((grid) => {
+    const hidden = container.querySelector(`input[name="${grid.dataset.ballGroup}Ball"]`);
+    grid.querySelectorAll('.ball-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        grid.querySelectorAll('.ball-btn').forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        hidden.value = btn.dataset.ball;
+      });
+    });
+  });
+}
+
+function readOverBall(fd, name) {
+  return { oversCompleted: Number(fd.get(`${name}Over`)) || 0, ball: Number(fd.get(`${name}Ball`)) || 0 };
 }
 
 // --- Keyboard quick-entry: an opt-in toggle so a PC/iPad keyboard's number
@@ -199,15 +242,16 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
     <div class="innings-dashboard">
       <div class="dash-left">
         ${partnershipFowCard(inn)}
-        <div class="grid cols-2">
-          ${milestonesCardInnings(inn)}
-          ${ballSummaryCard(inn)}
-        </div>
       </div>
       <div class="dash-right">
         <div class="score-and-pad">
           ${scoreHeroCard(match, inn)}
           ${isActive && !closed ? sidePanelCard(inn) : ''}
+        </div>
+        <div class="grid cols-3">
+          ${milestonesCardInnings(inn)}
+          ${centuriesCardInnings(inn)}
+          ${ballSummaryCard(inn)}
         </div>
         ${inn.number === 4 ? requiredRunRateCard(match, inn) : ''}
         ${isActive && closed ? nextInningsCard(match, inn) : ''}
@@ -396,11 +440,11 @@ function nextInningsCard(match, inn) {
 function oversTableCard(inn) {
   const rows = overByOverSeries(inn);
   if (rows.length === 0) {
-    return `<div class="card"><h3>Overs</h3><p class="meta">No overs yet</p></div>`;
+    return `<div class="card overs-card-fit"><h3>Overs</h3><p class="meta">No overs yet</p></div>`;
   }
   const columns = chunkArray(rows, 50);
   return `
-    <div class="card">
+    <div class="card overs-card-fit">
       <h3>Overs</h3>
       <div class="overs-columns">
         ${columns.map((col) => `
@@ -585,6 +629,24 @@ function milestonesCardInnings(inn) {
   `;
 }
 
+/** Centuries only (100, 200...), each with its own 51-100 segment pace and the full 0-100 pace. */
+function centuriesCardInnings(inn) {
+  const cs = teamCenturies(inn);
+  return `
+    <div class="card">
+      <h3>Centuries</h3>
+      <div class="table-wrap">
+        <table class="compact-table">
+          <thead><tr><th>Runs</th><th>At</th><th>50 RR</th><th>Inns RR</th></tr></thead>
+          <tbody>
+            ${cs.map((m) => `<tr><td>${m.milestone}</td><td>${m.overs}</td><td>${fmtRR(m.runRateForSegment)}</td><td>${fmtRR(m.cumulativeRunRate)}</td></tr>`).join('') || '<tr><td colspan="4" class="meta">None yet</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 async function saveOver(match, inn, runs) {
   const prevRuns = currentScore(inn).runs;
   const overNumber = sortedOvers(inn).length + 1;
@@ -632,15 +694,16 @@ async function collectMilestones(match, inn, crossed, overNumber) {
         <h2>${milestone} up!</h2>
         <p class="meta">Which ball did the team reach ${milestone}?</p>
         <form id="milestone-form">
-          <div class="field"><label>Over.Ball (e.g. ${overNumber - 1}.4)</label><input name="overBall" value="${overNumber - 1}.6" required autofocus /></div>
+          ${overBallField('ms', overNumber - 1, 6)}
           <button type="submit" class="btn primary big">Confirm</button>
         </form>
       `;
       openModal(html, {
         onMount: (m) => {
+          wireBallGrids(m);
           m.querySelector('#milestone-form').addEventListener('submit', (e) => {
             e.preventDefault();
-            const { oversCompleted, ball } = parseOverBall(new FormData(e.target).get('overBall'));
+            const { oversCompleted, ball } = readOverBall(new FormData(e.target), 'ms');
             inn.milestonesLog.push({ milestone, oversCompleted, ball });
             closeModal();
             resolve();
@@ -669,19 +732,18 @@ async function handleWicket(match, inn, battingLineup) {
             <option value="1">${esc(pair[1] || 'Batsman 2')}</option>
           </select>
         </div>
-        <div class="grid cols-2">
-          <div class="field"><label>Over.Ball (e.g. ${nextOverNumber - 1}.4)</label><input name="overBall" value="${nextOverNumber - 1}.1" required /></div>
-          <div class="field"><label>Team score</label><input name="score" type="number" value="${cur.runs}" required /></div>
-        </div>
+        ${overBallField('wkt', nextOverNumber - 1, 1)}
+        <div class="field"><label>Team score</label><input name="score" type="number" value="${cur.runs}" required /></div>
         <button type="submit" class="btn primary big">Next: new batsman</button>
       </form>
     `;
     openModal(html, {
       onMount: (m) => {
+        wireBallGrids(m);
         m.querySelector('#wicket-form').addEventListener('submit', (e) => {
           e.preventDefault();
           const fd = new FormData(e.target);
-          const { oversCompleted, ball } = parseOverBall(fd.get('overBall'));
+          const { oversCompleted, ball } = readOverBall(fd, 'wkt');
           resolve({
             outIndex: Number(fd.get('outIndex')),
             oversCompleted,
@@ -697,8 +759,9 @@ async function handleWicket(match, inn, battingLineup) {
 
   let inBatsman = '';
   if (wicketNumber < 10) {
-    const suggested = nextAvailableBatsman(battingLineup, inn);
-    const hasLineup = battingLineup.length > 0;
+    const options = availableBatsmen(battingLineup, inn);
+    const suggested = options[0] || '';
+    const hasLineup = options.length > 0;
     inBatsman = await new Promise((resolve) => {
       const html = `
         <h2>New batsman</h2>
@@ -707,7 +770,7 @@ async function handleWicket(match, inn, battingLineup) {
           ${hasLineup ? `
             <div class="field"><label>Incoming batsman</label>
               <select name="name">
-                ${battingLineup.map((n) => `<option value="${esc(n)}" ${n === suggested ? 'selected' : ''}>${esc(n)}</option>`).join('')}
+                ${options.map((n) => `<option value="${esc(n)}" ${n === suggested ? 'selected' : ''}>${esc(n)}</option>`).join('')}
               </select>
             </div>
           ` : `
@@ -811,7 +874,7 @@ function renderScorecardTab(el, match) {
                 <td>${sc.runs}/${sc.wickets}${isInningsClosed(i) ? '' : '*'}</td>
                 <td>${sc.overString}</td>
                 <td>${fmtRR(sc.runRate)}</td>
-                <td>${bp ? `${bp.runs} (wkt ${bp.wicketNumber})` : '-'}</td>
+                <td>${bp ? `${bp.runs} (${ordinal(bp.wicketNumber)} Wicket)` : '-'}</td>
               </tr>`;
             }).join('') || '<tr><td colspan="6" class="meta">No innings yet</td></tr>'}
           </tbody>
@@ -831,12 +894,17 @@ function renderPartnershipsCompareTab(el, match) {
   wrap.innerHTML = `
     <div class="card">
       <h3>Partnerships across innings</h3>
-      <p class="meta">Runs (balls faced, run rate) for each wicket, compared across every innings played so far.</p>
+      <p class="meta">Runs, balls faced and run rate for each wicket, compared across every innings played so far.</p>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>Wkt</th>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+        <table class="partnerships-compare">
+          <thead>
+            <tr><th rowspan="2">Wkt</th>${headers.map((h) => `<th colspan="3" class="grp-start">${esc(h)}</th>`).join('')}</tr>
+            <tr>${headers.map(() => `<th class="grp-start">Runs</th><th>Balls</th><th>RR</th>`).join('')}</tr>
+          </thead>
           <tbody>
-            ${rows.map((r) => `<tr><td>${r.wicket}</td>${r.cells.map((c) => `<td>${c ? `${c.runs} (${c.balls}b, RR ${fmtRR(c.runRate)})` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No partnerships yet</td></tr>`}
+            ${rows.map((r) => `<tr><td>${r.wicket}</td>${r.cells.map((c) => c
+              ? `<td class="grp-start">${c.runs}</td><td>${c.balls}</td><td>${fmtRR(c.runRate)}</td>`
+              : `<td class="grp-start meta">-</td><td class="meta">-</td><td class="meta">-</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length * 3 + 1}" class="meta">No partnerships yet</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -850,16 +918,29 @@ function renderPartnershipsCompareTab(el, match) {
 function renderMilestonesCompareTab(el, match) {
   const wrap = document.createElement('div');
   const rows = milestonesComparison(match);
+  const centuryRows = centuriesComparison(match);
   const headers = match.innings.map((i) => inningsSubTabLabel(match, i.number));
   wrap.innerHTML = `
     <div class="card">
       <h3>Milestones across innings</h3>
-      <p class="meta">Over.ball each team milestone was reached, compared across every innings played so far.</p>
+      <p class="meta">Over.ball each 50-run milestone was reached, compared across every innings played so far.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Runs</th>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
           <tbody>
-            ${rows.map((r) => `<tr><td>${r.milestone}</td>${r.cells.map((c) => `<td>${c ? `${c.overs} ov` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No milestones reached yet</td></tr>`}
+            ${rows.map((r) => `<tr><td>${r.milestone}</td>${r.cells.map((c) => `<td>${c ? `${c.overs} ov (RR ${fmtRR(c.runRateForSegment)})` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No milestones reached yet</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Centuries across innings</h3>
+      <p class="meta">Each century's pace over its last 50 and across the whole innings, compared across every innings played so far.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Runs</th>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${centuryRows.map((r) => `<tr><td>${r.milestone}</td>${r.cells.map((c) => `<td>${c ? `${c.overs} ov (last 50 RR ${fmtRR(c.runRateForSegment)}, innings RR ${fmtRR(c.cumulativeRunRate)})` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No centuries reached yet</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -938,8 +1019,8 @@ function renderSessionsTab(el, match, rerender) {
       </div>
       <div id="session-body"></div>
     </div>
-    <div class="card">
-      <h3>Time lost per session</h3>
+    <details class="card">
+      <summary>Time lost per session</summary>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Day</th><th>Morning</th><th>Afternoon</th><th>Evening</th></tr></thead>
@@ -948,7 +1029,7 @@ function renderSessionsTab(el, match, rerender) {
           </tbody>
         </table>
       </div>
-    </div>
+    </details>
   `;
   el.replaceChildren(wrap);
 

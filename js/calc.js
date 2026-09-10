@@ -17,9 +17,23 @@ export function totalBalls(innings) {
 
 export function currentScore(innings) {
   const overs = sortedOvers(innings);
-  const runs = overs.reduce((sum, o) => sum + o.runs, 0);
+  let runs = overs.reduce((sum, o) => sum + o.runs, 0);
   const wickets = Math.min(10, innings.fallOfWickets.length);
-  const balls = overs.length * 6;
+  let balls = overs.length * 6;
+
+  // All out mid-over: the over the final wicket fell in is often never
+  // separately entered as a completed over, so the sum above stops short of
+  // the true final total/over count. The fall-of-wicket record captured the
+  // score and exact ball at that moment - trust it when it's further along.
+  if (wickets >= 10) {
+    const lastWicket = [...innings.fallOfWickets].sort((a, b) => a.wicketNumber - b.wicketNumber).pop();
+    if (lastWicket) {
+      const wicketBalls = toBalls(lastWicket.oversCompleted, lastWicket.ball);
+      if (wicketBalls > balls) balls = wicketBalls;
+      if (lastWicket.score > runs) runs = lastWicket.score;
+    }
+  }
+
   return {
     runs,
     wickets,
@@ -35,12 +49,13 @@ export function isInningsClosed(innings) {
 }
 
 /**
- * The first name in `lineup` not yet accounted for in this innings (not
- * currently batting, not already dismissed, not already sent in) - used to
- * default the "incoming batsman" picker when a wicket falls.
+ * Names in `lineup` not yet accounted for in this innings - not currently
+ * batting, not already dismissed, not already sent in - since nobody bats
+ * twice in an innings. Used both to build the "incoming batsman" picker's
+ * option list and to default it to the next player in order.
  */
-export function nextAvailableBatsman(lineup, innings) {
-  if (!lineup || lineup.length === 0) return '';
+export function availableBatsmen(lineup, innings) {
+  if (!lineup || lineup.length === 0) return [];
   const used = new Set();
   (innings.currentBatsmen || []).forEach((n) => { if (n) used.add(n); });
   (innings.fallOfWickets || []).forEach((w) => {
@@ -48,7 +63,11 @@ export function nextAvailableBatsman(lineup, innings) {
     if (w.batsman2) used.add(w.batsman2);
     if (w.inBatsman) used.add(w.inBatsman);
   });
-  return lineup.find((n) => !used.has(n)) || '';
+  return lineup.filter((n) => !used.has(n));
+}
+
+export function nextAvailableBatsman(lineup, innings) {
+  return availableBatsmen(lineup, innings)[0] || '';
 }
 
 /** Find the saved over entry (if any) for a given over number in an innings. */
@@ -181,11 +200,19 @@ export function teamMilestones(innings) {
       balls,
       ballsForSegment: seg,
       runRateForSegment: seg > 0 ? runsSeg / ballsToOversDecimalForRR(seg) : null,
+      cumulativeRunRate: balls > 0 ? m.milestone / ballsToOversDecimalForRR(balls) : null,
     };
     prevBalls = balls;
     prevValue = m.milestone;
     return row;
   });
+}
+
+/** Century-only view of teamMilestones (100, 200, 300...) - each row already carries both
+ * its own from-previous-century segment (runRateForSegment) and the full-innings pace
+ * (cumulativeRunRate), so no separate "0-100" computation is needed. */
+export function teamCenturies(innings) {
+  return teamMilestones(innings).filter((m) => m.milestone % 100 === 0);
 }
 
 /** Follow-on margin per Laws of Cricket 14.1, keyed by scheduled match length in days. */
@@ -455,18 +482,32 @@ export function partnershipsComparison(match) {
   return rows;
 }
 
-/** Cross-innings comparison of team milestones, for the top-level Milestones tab. */
+/** Cross-innings comparison of team milestones (all 50s), for the top-level Milestones tab. */
 export function milestonesComparison(match) {
+  return crossInningsMilestoneRows(match, teamMilestones);
+}
+
+/** Cross-innings comparison of centuries only (100, 200, 300...), for the top-level Milestones tab. */
+export function centuriesComparison(match) {
+  return crossInningsMilestoneRows(match, teamCenturies);
+}
+
+function crossInningsMilestoneRows(match, source) {
+  const perInnings = match.innings.map((inn) => source(inn));
   const values = new Set();
-  match.innings.forEach((inn) => inn.milestonesLog.forEach((m) => values.add(m.milestone)));
+  perInnings.forEach((rows) => rows.forEach((m) => values.add(m.milestone)));
   const sorted = [...values].sort((a, b) => a - b);
   return sorted.map((milestone) => ({
     milestone,
-    cells: match.innings.map((inn) => {
-      const m = inn.milestonesLog.find((x) => x.milestone === milestone);
+    cells: perInnings.map((rows) => {
+      const m = rows.find((x) => x.milestone === milestone);
       if (!m) return null;
-      const balls = toBalls(m.oversCompleted, m.ball);
-      return { overs: ballsToOverString(balls), balls };
+      return {
+        overs: m.overs,
+        balls: m.balls,
+        runRateForSegment: m.runRateForSegment,
+        cumulativeRunRate: m.cumulativeRunRate,
+      };
     }),
   }));
 }

@@ -251,7 +251,7 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
 .overs-col { flex: 1 1 150px; max-width: 200px; margin-bottom: 0; }
 
 .compact-table { font-size: 0.82rem; }
-.compact-table th, .compact-table td { padding: 4px 6px; }
+.compact-table th, .compact-table td { padding: 4px 6px; white-space: nowrap; }
 
 .editable-name {
   cursor: pointer;
@@ -270,6 +270,41 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
   padding: 2px 4px;
   font-size: inherit;
 }
+
+/* Ball picker: 7 buttons for .0-.6, used in wicket/milestone modals. */
+.ball-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-bottom: 4px; }
+.ball-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  padding: 8px 0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.ball-btn.selected { background: var(--accent-2); border-color: var(--accent-2); color: #06202f; font-weight: 600; }
+
+/* Overs card: shrink to fit its columns instead of stretching to fill dash-right. */
+.overs-card-fit { align-self: flex-start; width: fit-content; max-width: 100%; }
+
+/* Partnerships comparison: Runs/Balls/RR sub-columns per innings, right-aligned and grouped. */
+.partnerships-compare th, .partnerships-compare td { text-align: right; }
+.partnerships-compare th:first-child, .partnerships-compare td:first-child { text-align: left; }
+.partnerships-compare .grp-start { border-left: 1px solid var(--border); }
+
+/* Collapsible cards using <details>/<summary>, styled to match the regular h3 card header. */
+details.card { padding: 14px; }
+details.card > summary {
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+details.card[open] > summary { margin-bottom: 8px; }
 
 footer.app-footer { text-align: center; color: var(--muted); font-size: 0.75rem; padding: 18px; }
 
