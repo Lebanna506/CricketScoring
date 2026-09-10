@@ -2,7 +2,7 @@ import { loadMatch, saveMatch, deleteMatch } from '../storage.js';
 import { exportMatch } from '../fileio.js';
 import {
   newOverEntry, newFowEntry, newInnings, teamName, SESSIONS, advanceSession,
-  inningsOrdinalForTeam, emptySessionRecord, ballsToOverString,
+  inningsOrdinalForTeam, emptySessionRecord, ballsToOverString, toBalls,
 } from '../model.js';
 import {
   currentScore, isInningsClosed, partnerships, bestPartnership, teamMilestones,
@@ -268,10 +268,10 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
             </div>
             ${ballSummaryCard(inn)}
           </div>
-          ${isActive && !closed ? sidePanelCard(inn) : ''}
+          ${!closed ? sidePanelCard(inn) : ''}
         </div>
         ${inn.number === 4 ? requiredRunRateCard(match, inn) : ''}
-        ${isActive && closed ? nextInningsCard(match, inn) : ''}
+        ${closed ? (isActive ? nextInningsCard(match, inn) : reopenCard(inn)) : ''}
         ${oversTableCard(inn)}
       </div>
     </div>
@@ -350,40 +350,63 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
       const sc = currentScore(inn);
       if (await confirmAction(`Declare ${teamName(match, battingSide)}'s innings closed at ${sc.runs}/${sc.wickets}?`, { okLabel: 'Declare' })) {
         inn.declared = true;
+        inn.reopened = false;
         await persist(match);
         rerender();
       }
     }
     if (action === 'undo') {
       const overs = sortedOvers(inn);
-      const lastOver = overs[overs.length - 1];
-      if (lastOver && await confirmAction(`Remove over ${lastOver.overNumber} (${lastOver.runs} runs)?`, { okLabel: 'Remove', danger: true })) {
-        inn.overs = inn.overs.filter((o) => o.id !== lastOver.id);
-        const removedWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 === lastOver.overNumber);
-        inn.fallOfWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 !== lastOver.overNumber);
-        // Removing a wicket must also undo the batsman substitution it caused -
-        // otherwise the incoming batsman (or, for the 10th wicket, a blank slot)
-        // stays "in" with no matching fall-of-wicket record, and the outgoing
-        // batsman silently vanishes from the current pair. Match by which slot
-        // (batsman1/batsman2) the wicket actually came from, not by searching
-        // for the incoming name, so this also works for the all-out 10th wicket
-        // where there was no incoming batsman to search for. Undo in reverse
-        // ball order so a multi-wicket over unwinds in the order it happened.
-        [...removedWickets].sort((a, b) => b.ball - a.ball).forEach((w) => {
-          const idx = w.batsman2 === w.outBatsman ? 1 : 0;
-          inn.currentBatsmen[idx] = w.outBatsman;
-        });
-        await persist(match);
-        rerender();
+      const enteredBalls = overs.length * 6;
+      const lastWicket = [...inn.fallOfWickets].sort((a, b) => a.wicketNumber - b.wicketNumber).pop();
+      const wicketIsTrailing = lastWicket && toBalls(lastWicket.oversCompleted, lastWicket.ball) > enteredBalls;
+
+      if (wicketIsTrailing) {
+        // This wicket has no completed over to remove - it ended the innings
+        // mid-over (and wasn't on the over's last ball, so no over entry was
+        // ever created for it), or was simply recorded ahead of the overs
+        // entered so far. Undo it directly instead of removing an unrelated
+        // real over.
+        if (await confirmAction(`Remove wicket ${lastWicket.wicketNumber} (${lastWicket.outBatsman || 'last man'})?`, { okLabel: 'Remove', danger: true })) {
+          inn.fallOfWickets = inn.fallOfWickets.filter((w) => w.id !== lastWicket.id);
+          const idx = lastWicket.batsman2 === lastWicket.outBatsman ? 1 : 0;
+          inn.currentBatsmen[idx] = lastWicket.outBatsman;
+          await persist(match);
+          rerender();
+        }
+      } else {
+        const lastOver = overs[overs.length - 1];
+        if (lastOver && await confirmAction(`Remove over ${lastOver.overNumber} (${lastOver.runs} runs)?`, { okLabel: 'Remove', danger: true })) {
+          inn.overs = inn.overs.filter((o) => o.id !== lastOver.id);
+          const removedWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 === lastOver.overNumber);
+          inn.fallOfWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 !== lastOver.overNumber);
+          // Removing a wicket must also undo the batsman substitution it caused -
+          // otherwise the incoming batsman (or, for the 10th wicket, a blank slot)
+          // stays "in" with no matching fall-of-wicket record, and the outgoing
+          // batsman silently vanishes from the current pair. Match by which slot
+          // (batsman1/batsman2) the wicket actually came from, not by searching
+          // for the incoming name, so this also works for the all-out 10th wicket
+          // where there was no incoming batsman to search for. Undo in reverse
+          // ball order so a multi-wicket over unwinds in the order it happened.
+          [...removedWickets].sort((a, b) => b.ball - a.ball).forEach((w) => {
+            const idx = w.batsman2 === w.outBatsman ? 1 : 0;
+            inn.currentBatsmen[idx] = w.outBatsman;
+          });
+          await persist(match);
+          rerender();
+        }
       }
     }
     if (action === 'start-next') {
       await startNextInnings(match, navigate);
     }
     if (action === 'reopen') {
-      inn.declared = false;
-      await persist(match);
-      rerender();
+      if (await confirmAction('Reopen this innings to fix a mistake? It closes again automatically once you declare or complete the final wicket.', { okLabel: 'Reopen' })) {
+        inn.declared = false;
+        inn.reopened = true;
+        await persist(match);
+        rerender();
+      }
     }
   });
 }
@@ -445,23 +468,39 @@ function sidePanelCard(inn) {
         <button class="btn secondary" data-action="new-ball">New Ball</button>
         <button class="btn ghost" data-action="mark-session-lost">Session Lost</button>
         <button class="btn warn" data-action="declare">Declare</button>
-        <button class="btn ghost" data-action="undo" ${sortedOvers(inn).length === 0 ? 'disabled' : ''}>Undo</button>
+        <button class="btn ghost" data-action="undo" ${sortedOvers(inn).length === 0 && inn.fallOfWickets.length === 0 ? 'disabled' : ''}>Undo</button>
       </div>
     </div>
   `;
 }
 
-function nextInningsCard(match, inn) {
-  if (match.innings.length >= 4) {
-    return `<div class="card meta">All four innings have been played. See Match Info to set the final result if needed.</div>`;
-  }
+function closedReasonText(inn) {
   const sc = currentScore(inn);
+  return `${sc.runs}/${sc.wickets}${inn.declared ? ' (declared)' : sc.wickets >= 10 ? ' (all out)' : ''}`;
+}
+
+function nextInningsCard(match, inn) {
+  const lastInningsOfMatch = match.innings.length >= 4;
   return `
     <div class="card">
-      <p>${esc(teamName(match, battingSideForInnings(match, inn.number)))}'s innings is closed at ${sc.runs}/${sc.wickets}.</p>
+      <p>${esc(teamName(match, battingSideForInnings(match, inn.number)))}'s innings is closed at ${closedReasonText(inn)}.</p>
+      ${lastInningsOfMatch ? '<p class="meta">All four innings have been played. See Match Info to set the final result if needed.</p>' : ''}
       <div class="btn-row">
-        <button class="btn primary" data-action="start-next">Start innings ${inn.number + 1}</button>
-        ${!inn.declared ? '' : '<button class="btn ghost" data-action="reopen">Reopen (undo declaration)</button>'}
+        ${lastInningsOfMatch ? '' : `<button class="btn primary" data-action="start-next">Start innings ${inn.number + 1}</button>`}
+        <button class="btn ghost" data-action="reopen">Reopen innings</button>
+      </div>
+    </div>
+  `;
+}
+
+/** Shown on a PAST (not the match's current) innings once it's closed - lets a
+ * scorer fix a mistake after the fact, even once later innings have started. */
+function reopenCard(inn) {
+  return `
+    <div class="card">
+      <p class="meta">This innings is closed at ${closedReasonText(inn)}.</p>
+      <div class="btn-row">
+        <button class="btn ghost" data-action="reopen">Reopen innings</button>
       </div>
     </div>
   `;
@@ -857,6 +896,9 @@ async function handleWicket(match, inn, battingLineup) {
   inn.currentBatsmen = newPair;
 
   if (wicketNumber >= 10) {
+    // Taking the 10th wicket again (e.g. after Undo + re-entering it while
+    // fixing a mistake on a reopened innings) legitimately re-closes it.
+    inn.reopened = false;
     // The innings just ended, so this over will never get entered via the
     // numpad the normal way - there's no more batting left to log runs for.
     // If the wicket fell on the over's last ball, the over is actually

@@ -219,6 +219,7 @@ function normalizeSessionRecord(value) {
 
 function normalizeInnings(inn, currentSession) {
   inn.declared = !!inn.declared;
+  inn.reopened = !!inn.reopened;
   inn.followOn = !!inn.followOn;
   inn.overs = inn.overs || [];
   inn.overs.forEach((o, idx) => {

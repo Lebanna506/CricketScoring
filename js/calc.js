@@ -47,7 +47,10 @@ export function currentScore(innings) {
 
 export function isInningsClosed(innings) {
   if (!innings) return false;
-  return innings.declared || innings.fallOfWickets.length >= 10;
+  // `reopened` lets a scorer fix a mistake after the innings ended: it
+  // suppresses the automatic all-out close, but not a declaration (which
+  // already has its own toggle - `declared` itself is set back to false).
+  return innings.declared || (!innings.reopened && innings.fallOfWickets.length >= 10);
 }
 
 /**
