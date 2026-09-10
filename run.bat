@@ -55,14 +55,14 @@ call npm run build
 where python >nul 2>nul
 if %errorlevel%==0 (
     echo Starting local server with Python...
-    start "Cricket Scorer Server" cmd /k python -m http.server %PORT%
+    start "Cricket Scorer Server" cmd /k python serve.py %PORT%
     goto :openBrowser
 )
 
 where py >nul 2>nul
 if %errorlevel%==0 (
     echo Starting local server with Python (py launcher)...
-    start "Cricket Scorer Server" cmd /k py -m http.server %PORT%
+    start "Cricket Scorer Server" cmd /k py serve.py %PORT%
     goto :openBrowser
 )
 
