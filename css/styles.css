@@ -290,9 +290,13 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
 /* Overs card: shrink to fit its columns instead of stretching to fill dash-right. */
 .overs-card-fit { align-self: flex-start; width: fit-content; max-width: 100%; }
 
-/* Partnerships comparison: Runs/Balls/RR sub-columns per innings, right-aligned and grouped. */
-.partnerships-compare th, .partnerships-compare td { text-align: right; }
-.partnerships-compare th:first-child, .partnerships-compare td:first-child { text-align: left; }
+/* Session-by-session table: shade alternating days and mark where a new day starts,
+   so consecutive sessions from the same day read as a visually distinct group. */
+tr.day-even td { background: rgba(255, 255, 255, 0.035); }
+tr.day-start td { border-top: 2px solid var(--border); }
+
+/* Partnerships comparison: Runs/Balls/RR sub-columns per innings, centred and grouped. */
+.partnerships-compare th, .partnerships-compare td { text-align: center; }
 .partnerships-compare .grp-start { border-left: 1px solid var(--border); }
 
 /* Collapsible cards using <details>/<summary>, styled to match the regular h3 card header. */

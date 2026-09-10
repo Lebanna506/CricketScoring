@@ -31,6 +31,11 @@ function lastInnings(match) {
 }
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+function overRunsLabel(row) {
+  if (row.runs !== 0) return String(row.runs);
+  return row.wicketInOver ? 'W' : 'M';
+}
+
 function ordinal(n) {
   const rem100 = n % 100;
   if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
@@ -247,11 +252,11 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
         <div class="score-and-pad">
           <div class="score-col">
             ${scoreHeroCard(match, inn)}
-            <div class="grid cols-3">
+            <div class="grid cols-2">
               ${milestonesCardInnings(inn)}
               ${centuriesCardInnings(inn)}
-              ${ballSummaryCard(inn)}
             </div>
+            ${ballSummaryCard(inn)}
           </div>
           ${isActive && !closed ? sidePanelCard(inn) : ''}
         </div>
@@ -465,9 +470,9 @@ function oversTableCard(inn) {
         ${columns.map((col) => `
           <div class="table-wrap overs-col">
             <table class="compact-table">
-              <thead><tr><th>Ov</th><th>R</th><th>Score</th><th>RR</th></tr></thead>
+              <thead><tr><th>Ov</th><th>Score</th><th>RR</th><th>R</th><th>5ovr</th></tr></thead>
               <tbody>
-                ${col.map((r) => `<tr><td>${r.overNumber}</td><td>${r.runs}</td><td>${r.cumRuns}/${r.cumWickets}</td><td>${fmtRR(r.runRate)}</td></tr>`).join('')}
+                ${col.map((r) => `<tr><td>${r.overNumber}</td><td>${r.cumRuns}/${r.cumWickets}</td><td>${fmtRR(r.runRate)}</td><td>${overRunsLabel(r)}</td><td>${fmtRR(r.last5OversRR)}</td></tr>`).join('')}
               </tbody>
             </table>
           </div>
@@ -631,7 +636,7 @@ function milestonesCardInnings(inn) {
   const ms = teamMilestones(inn);
   return `
     <div class="card">
-      <h3>Milestones</h3>
+      <h3>Half-Centuries</h3>
       <div class="table-wrap">
         <table class="compact-table">
           <thead><tr><th>Runs</th><th>At</th><th>RR</th></tr></thead>
@@ -652,9 +657,9 @@ function centuriesCardInnings(inn) {
       <h3>Centuries</h3>
       <div class="table-wrap">
         <table class="compact-table">
-          <thead><tr><th>Runs</th><th>At</th><th>50 RR</th><th>Inns RR</th></tr></thead>
+          <thead><tr><th>Runs</th><th>At</th><th>RR</th></tr></thead>
           <tbody>
-            ${cs.map((m) => `<tr><td>${m.milestone}</td><td>${m.overs}</td><td>${fmtRR(m.runRateForSegment)}</td><td>${fmtRR(m.cumulativeRunRate)}</td></tr>`).join('') || '<tr><td colspan="4" class="meta">None yet</td></tr>'}
+            ${cs.map((m) => `<tr><td>${m.milestone}</td><td>${m.overs}</td><td>${fmtRR(m.runRate)}</td></tr>`).join('') || '<tr><td colspan="3" class="meta">None yet</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -821,6 +826,8 @@ async function handleWicket(match, inn, battingLineup) {
     batsman2: pair[1],
     outBatsman: outName,
     inBatsman,
+    day: match.currentSession.day,
+    session: match.currentSession.session,
   }));
   const newPair = [...pair];
   newPair[step1.outIndex] = inBatsman;
@@ -937,25 +944,25 @@ function renderMilestonesCompareTab(el, match) {
   const headers = match.innings.map((i) => inningsSubTabLabel(match, i.number));
   wrap.innerHTML = `
     <div class="card">
-      <h3>Milestones across innings</h3>
-      <p class="meta">Over.ball each 50-run milestone was reached, compared across every innings played so far.</p>
+      <h3>Half-Centuries across Innings</h3>
+      <p class="meta">50-run milestones, compared across every innings played so far.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Runs</th>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
           <tbody>
-            ${rows.map((r) => `<tr><td>${r.milestone}</td>${r.cells.map((c) => `<td>${c ? `${c.overs} ov (RR ${fmtRR(c.runRateForSegment)})` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No milestones reached yet</td></tr>`}
+            ${rows.map((r) => `<tr><td>${r.milestone}</td>${r.cells.map((c) => `<td>${c ? `${c.overs} ov (RR ${fmtRR(c.runRate)})` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No milestones reached yet</td></tr>`}
           </tbody>
         </table>
       </div>
     </div>
     <div class="card">
       <h3>Centuries across innings</h3>
-      <p class="meta">Each century's pace over its last 50 and across the whole innings, compared across every innings played so far.</p>
+      <p class="meta">100-run milestones, compared across every innings played so far.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Runs</th>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
           <tbody>
-            ${centuryRows.map((r) => `<tr><td>${r.milestone}</td>${r.cells.map((c) => `<td>${c ? `${c.overs} ov (last 50 RR ${fmtRR(c.runRateForSegment)}, innings RR ${fmtRR(c.cumulativeRunRate)})` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No centuries reached yet</td></tr>`}
+            ${centuryRows.map((r) => `<tr><td>${r.milestone}</td>${r.cells.map((c) => `<td>${c ? `${c.overs} ov (RR ${fmtRR(c.runRate)})` : '-'}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${headers.length + 1}" class="meta">No centuries reached yet</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -989,26 +996,30 @@ function renderSessionsTab(el, match, rerender) {
   const selected = lastInnings(match)?.number ?? options[0]?.value;
   const overallRows = matchSessionSummary(match);
   const dayRows = daySummaries(match);
+  const curStats = overallRows.find((r) => r.day === match.currentSession.day && r.session === match.currentSession.session);
 
   wrap.innerHTML = `
     <div class="card">
       <h3>Current session</h3>
-      <p class="meta">Day ${match.currentSession.day} - ${cap(match.currentSession.session)}. New overs are tagged with this automatically; use End Session / Mark Session Lost on the active innings tab to move on.</p>
+      <p>Day ${match.currentSession.day} - ${cap(match.currentSession.session)}${curStats ? `: ${curStats.runs} runs, ${curStats.wickets} wkts (${curStats.overs} ov, RR ${fmtRR(curStats.runRate)})` : ' - no play yet'}</p>
+      <div class="btn-row">
+        <button class="btn secondary" data-action="end-session-retro">End this session…</button>
+      </div>
     </div>
     <div class="card">
       <h3>Session-by-session (all innings combined)</h3>
-      <p class="meta">Each session is expected to have ${30} overs. Green = ahead of that, red = behind, white = on pace. The expectation drops by 2 overs for every innings change during the session.</p>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Day</th><th>Session</th><th>Runs</th><th>Wkts</th><th>Overs</th><th>RR</th></tr></thead>
           <tbody>
-            ${overallRows.map((r) => {
+            ${overallRows.map((r, idx) => {
+              const rowClass = `${r.day % 2 === 0 ? 'day-even' : 'day-odd'}${idx === 0 || overallRows[idx - 1].day !== r.day ? ' day-start' : ''}`;
               const rec = sessionRecord(match, r.day, r.session);
               if (rec?.lost) {
-                return `<tr><td>${r.day}</td><td>${cap(r.session)}</td><td colspan="4" class="meta">Session lost</td></tr>`;
+                return `<tr class="${rowClass}"><td>${r.day}</td><td>${cap(r.session)}</td><td colspan="4" class="meta">Session lost</td></tr>`;
               }
               const expected = expectedOversForSession(match, r.day, r.session);
-              return `<tr><td>${r.day}</td><td>${cap(r.session)}</td><td>${r.runs}</td><td>${r.wickets}</td><td>${r.overs} ${oversDiffSpan(r.oversDecimal, expected)}</td><td>${fmtRR(r.runRate)}</td></tr>`;
+              return `<tr class="${rowClass}"><td>${r.day}</td><td>${cap(r.session)}</td><td>${r.runs}</td><td>${r.wickets}</td><td>${r.overs} ${oversDiffSpan(r.oversDecimal, expected)}</td><td>${fmtRR(r.runRate)}</td></tr>`;
             }).join('') || '<tr><td colspan="6" class="meta">No play recorded yet</td></tr>'}
           </tbody>
         </table>
@@ -1089,6 +1100,63 @@ function renderSessionsTab(el, match, rerender) {
       toast('Saved');
     });
   });
+
+  wrap.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="end-session-retro"]');
+    if (!btn) return;
+    await retroactiveEndSession(match, rerender);
+  });
+}
+
+/**
+ * Ends the current session as of a chosen innings/over rather than "right
+ * now" - for catching up on overs after the fact, when the session actually
+ * ended a few overs before the scorer got around to entering them. Any
+ * overs/wickets recorded past that point move to the next session.
+ */
+async function retroactiveEndSession(match, rerender) {
+  const target = lastInnings(match);
+  if (!target) { toast('No innings started yet'); return; }
+
+  const choice = await new Promise((resolve) => {
+    const defaultOver = sortedOvers(target).length;
+    const html = `
+      <h2>End ${cap(match.currentSession.session)} session (Day ${match.currentSession.day})</h2>
+      <p class="meta">Pick the innings and last over that were actually part of this session - anything recorded after that moves to the next session.</p>
+      <form id="end-session-form">
+        <div class="field"><label>Innings</label>
+          <select name="innings">
+            ${match.innings.map((i) => `<option value="${i.number}" ${i.number === target.number ? 'selected' : ''}>${esc(inningsSubTabLabel(match, i.number))}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Last over of this session</label><input name="lastOver" type="number" min="0" value="${defaultOver}" required /></div>
+        <button type="submit" class="btn primary big">End session</button>
+      </form>
+    `;
+    openModal(html, {
+      onMount: (m) => {
+        m.querySelector('#end-session-form').addEventListener('submit', (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          closeModal();
+          resolve({ inningsNumber: Number(fd.get('innings')), lastOver: Number(fd.get('lastOver')) });
+        });
+      },
+    });
+  });
+
+  const inn = getInnings(match, choice.inningsNumber);
+  if (!inn) return;
+  const nextSession = advanceSession(match.currentSession);
+  inn.overs.forEach((o) => {
+    if (o.overNumber > choice.lastOver) { o.day = nextSession.day; o.session = nextSession.session; }
+  });
+  inn.fallOfWickets.forEach((w) => {
+    if (w.oversCompleted + 1 > choice.lastOver) { w.day = nextSession.day; w.session = nextSession.session; }
+  });
+  match.currentSession = nextSession;
+  await persist(match);
+  rerender();
 }
 
 // ----------------------------------------------------------------- INFO TAB

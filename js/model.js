@@ -134,7 +134,7 @@ export function newOverEntry({ overNumber, runs, day, session, ballNumber }) {
   };
 }
 
-export function newFowEntry({ wicketNumber, oversCompleted, ball, score, batsman1, batsman2, outBatsman, inBatsman }) {
+export function newFowEntry({ wicketNumber, oversCompleted, ball, score, batsman1, batsman2, outBatsman, inBatsman, day, session }) {
   return {
     id: uid('fow'),
     wicketNumber,
@@ -148,6 +148,11 @@ export function newFowEntry({ wicketNumber, oversCompleted, ball, score, batsman
     batsman2: batsman2 || '',
     outBatsman: outBatsman || '',
     inBatsman: inBatsman || '',
+    // Captured at entry time (like an over's day/session) so a wicket that
+    // falls mid-over - before that over's own day/session-tagged entry
+    // exists - can still be attributed to the right session in summaries.
+    day: day || 1,
+    session: session || 'morning',
   };
 }
 
@@ -254,4 +259,6 @@ function normalizeFow(w) {
   // Earlier versions called this field batsmanOut.
   w.outBatsman = w.outBatsman || w.batsmanOut || '';
   w.inBatsman = w.inBatsman || '';
+  w.day = w.day || 1;
+  w.session = w.session || 'morning';
 }

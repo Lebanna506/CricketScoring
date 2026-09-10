@@ -21,15 +21,17 @@ export function currentScore(innings) {
   const wickets = Math.min(10, innings.fallOfWickets.length);
   let balls = overs.length * 6;
 
-  // All out mid-over: the over the final wicket fell in is often never
-  // separately entered as a completed over, so the sum above stops short of
-  // the true final total/over count. The fall-of-wicket record captured the
-  // score and exact ball at that moment - trust it when it's further along.
-  if (wickets >= 10) {
-    const lastWicket = [...innings.fallOfWickets].sort((a, b) => a.wicketNumber - b.wicketNumber).pop();
-    if (lastWicket) {
-      const wicketBalls = toBalls(lastWicket.oversCompleted, lastWicket.ball);
-      if (wicketBalls > balls) balls = wicketBalls;
+  // A wicket's fall is recorded independently of the over-by-over totals -
+  // the scorer might log it the moment it happens, before entering that
+  // over's full runs (or, for the innings' final wicket, that over might
+  // never get entered separately at all). Whenever the latest recorded
+  // wicket is further along than the completed overs, trust its score/ball
+  // as the current position until a later completed over overtakes it.
+  const lastWicket = [...innings.fallOfWickets].sort((a, b) => a.wicketNumber - b.wicketNumber).pop();
+  if (lastWicket) {
+    const wicketBalls = toBalls(lastWicket.oversCompleted, lastWicket.ball);
+    if (wicketBalls > balls) {
+      balls = wicketBalls;
       if (lastWicket.score > runs) runs = lastWicket.score;
     }
   }
@@ -75,20 +77,48 @@ function overEntryFor(innings, overNumber) {
   return innings.overs.find((o) => o.overNumber === overNumber) || null;
 }
 
+/**
+ * The runs/balls/day/session a trailing wicket contributes beyond what's
+ * been entered as completed overs - mirrors the adjustment currentScore()
+ * makes, so any view that sums up overs directly (session/day breakdowns)
+ * can apply the same "trust the latest wicket when it's further along" rule
+ * instead of silently under-counting the innings' true final position.
+ * Returns null when there's no such gap (i.e. the overs already cover it).
+ */
+function trailingWicketGap(innings) {
+  const overs = sortedOvers(innings);
+  const enteredRuns = overs.reduce((sum, o) => sum + o.runs, 0);
+  const enteredBalls = overs.length * 6;
+  const lastWicket = [...innings.fallOfWickets].sort((a, b) => a.wicketNumber - b.wicketNumber).pop();
+  if (!lastWicket) return null;
+  const wicketBalls = toBalls(lastWicket.oversCompleted, lastWicket.ball);
+  if (wicketBalls <= enteredBalls) return null;
+  return {
+    day: lastWicket.day || overs[overs.length - 1]?.day || 1,
+    session: lastWicket.session || overs[overs.length - 1]?.session || 'morning',
+    extraRuns: Math.max(0, lastWicket.score - enteredRuns),
+    extraBalls: wicketBalls - enteredBalls,
+  };
+}
+
 /** Over-by-over series with cumulative runs/wickets/run-rate - the main innings table. */
 export function overByOverSeries(innings) {
   const overs = sortedOvers(innings);
   let cumRuns = 0;
-  return overs.map((o) => {
+  return overs.map((o, idx) => {
     cumRuns += o.runs;
+    const wicketInOver = innings.fallOfWickets.some((w) => w.oversCompleted + 1 === o.overNumber);
     const cumWickets = Math.min(10, innings.fallOfWickets.filter((w) => w.oversCompleted + 1 <= o.overNumber).length);
     const balls = o.overNumber * 6;
+    const last5Runs = overs.slice(Math.max(0, idx - 4), idx + 1).reduce((sum, ov) => sum + ov.runs, 0);
     return {
       overNumber: o.overNumber,
       runs: o.runs,
+      wicketInOver,
       cumRuns,
       cumWickets,
       runRate: cumRuns / ballsToOversDecimalForRR(balls),
+      last5OversRR: last5Runs / 5,
       day: o.day,
       session: o.session,
       ballNumber: o.ballNumber,
@@ -204,7 +234,6 @@ export function teamMilestones(innings) {
       balls,
       ballsForSegment: seg,
       runRateForSegment: seg > 0 ? runsSeg / ballsToOversDecimalForRR(seg) : null,
-      cumulativeRunRate: balls > 0 ? m.milestone / ballsToOversDecimalForRR(balls) : null,
     };
     prevBalls = balls;
     prevValue = m.milestone;
@@ -212,11 +241,26 @@ export function teamMilestones(innings) {
   });
 }
 
-/** Century-only view of teamMilestones (100, 200, 300...) - each row already carries both
- * its own from-previous-century segment (runRateForSegment) and the full-innings pace
- * (cumulativeRunRate), so no separate "0-100" computation is needed. */
+/** Century-only view (100, 200, 300...), with its own run rate for that specific
+ * 100 runs - from the previous century (or innings start) to this one - rather
+ * than the 50-only segment rate shown in the Half-Centuries view. */
 export function teamCenturies(innings) {
-  return teamMilestones(innings).filter((m) => m.milestone % 100 === 0);
+  const centuries = teamMilestones(innings).filter((m) => m.milestone % 100 === 0);
+  let prevBalls = 0;
+  let prevValue = 0;
+  return centuries.map((m) => {
+    const segBalls = m.balls - prevBalls;
+    const segRuns = m.milestone - prevValue;
+    const row = {
+      milestone: m.milestone,
+      overs: m.overs,
+      balls: m.balls,
+      runRate: segBalls > 0 ? segRuns / ballsToOversDecimalForRR(segBalls) : null,
+    };
+    prevBalls = m.balls;
+    prevValue = m.milestone;
+    return row;
+  });
 }
 
 /** Follow-on margin per Laws of Cricket 14.1, keyed by scheduled match length in days. */
@@ -229,18 +273,25 @@ export function followOnThreshold(scheduledDays) {
 export function sessionSummary(innings) {
   const overs = sortedOvers(innings);
   const map = new Map();
+  const ensure = (day, session) => {
+    const key = `${day}-${session}`;
+    if (!map.has(key)) map.set(key, { day, session, runs: 0, wickets: 0, ballsBowled: 0 });
+    return map.get(key);
+  };
   for (const o of overs) {
-    const key = `${o.day}-${o.session}`;
-    if (!map.has(key)) map.set(key, { day: o.day, session: o.session, runs: 0, wickets: 0, ballsBowled: 0 });
-    const entry = map.get(key);
-    entry.runs += o.runs;
-    entry.ballsBowled += 6;
+    const e = ensure(o.day, o.session);
+    e.runs += o.runs;
+    e.ballsBowled += 6;
   }
   for (const w of innings.fallOfWickets) {
     const tag = overEntryFor(innings, w.oversCompleted + 1);
-    if (!tag) continue;
-    const key = `${tag.day}-${tag.session}`;
-    if (map.has(key)) map.get(key).wickets += 1;
+    ensure(tag ? tag.day : w.day, tag ? tag.session : w.session).wickets += 1;
+  }
+  const gap = trailingWicketGap(innings);
+  if (gap) {
+    const e = ensure(gap.day, gap.session);
+    e.runs += gap.extraRuns;
+    e.ballsBowled += gap.extraBalls;
   }
   return [...map.values()].map((e) => ({
     ...e,
@@ -265,7 +316,13 @@ export function matchSessionSummary(match) {
     }
     for (const w of innings.fallOfWickets) {
       const tag = overEntryFor(innings, w.oversCompleted + 1);
-      if (tag) ensure(tag.day, tag.session).wickets += 1;
+      ensure(tag ? tag.day : w.day, tag ? tag.session : w.session).wickets += 1;
+    }
+    const gap = trailingWicketGap(innings);
+    if (gap) {
+      const e = ensure(gap.day, gap.session);
+      e.runs += gap.extraRuns;
+      e.ballsBowled += gap.extraBalls;
     }
   }
   return [...map.values()].map((e) => ({
@@ -308,17 +365,27 @@ export function expectedOversForDay(match, day) {
 /** Day-by-day summary aggregated across ALL innings that had overs bowled that day. */
 export function daySummaries(match) {
   const byDay = new Map();
+  const ensure = (day) => {
+    if (!byDay.has(day)) byDay.set(day, { day, runs: 0, wickets: 0, ballsBowled: 0, inningsTouched: new Set() });
+    return byDay.get(day);
+  };
   for (const innings of match.innings) {
     for (const o of sortedOvers(innings)) {
-      if (!byDay.has(o.day)) byDay.set(o.day, { day: o.day, runs: 0, wickets: 0, ballsBowled: 0, inningsTouched: new Set() });
-      const d = byDay.get(o.day);
+      const d = ensure(o.day);
       d.runs += o.runs;
       d.ballsBowled += 6;
       d.inningsTouched.add(innings.number);
     }
     for (const w of innings.fallOfWickets) {
       const tag = overEntryFor(innings, w.oversCompleted + 1);
-      if (tag && byDay.has(tag.day)) byDay.get(tag.day).wickets += 1;
+      ensure(tag ? tag.day : w.day).wickets += 1;
+    }
+    const gap = trailingWicketGap(innings);
+    if (gap) {
+      const d = ensure(gap.day);
+      d.runs += gap.extraRuns;
+      d.ballsBowled += gap.extraBalls;
+      d.inningsTouched.add(innings.number);
     }
   }
   return [...byDay.values()]
@@ -509,8 +576,7 @@ function crossInningsMilestoneRows(match, source) {
       return {
         overs: m.overs,
         balls: m.balls,
-        runRateForSegment: m.runRateForSegment,
-        cumulativeRunRate: m.cumulativeRunRate,
+        runRate: m.runRate ?? m.runRateForSegment,
       };
     }),
   }));
