@@ -110,7 +110,11 @@ export function overByOverSeries(innings) {
     const wicketInOver = innings.fallOfWickets.some((w) => w.oversCompleted + 1 === o.overNumber);
     const cumWickets = Math.min(10, innings.fallOfWickets.filter((w) => w.oversCompleted + 1 <= o.overNumber).length);
     const balls = o.overNumber * 6;
-    const last5Runs = overs.slice(Math.max(0, idx - 4), idx + 1).reduce((sum, ov) => sum + ov.runs, 0);
+    // Only meaningful once 5 overs have actually been bowled - before that
+    // there's no "last 5 overs" window yet, so leave it blank rather than
+    // showing a rate diluted by overs that haven't happened.
+    const hasFullWindow = idx >= 4;
+    const last5Runs = hasFullWindow ? overs.slice(idx - 4, idx + 1).reduce((sum, ov) => sum + ov.runs, 0) : null;
     return {
       overNumber: o.overNumber,
       runs: o.runs,
@@ -118,7 +122,8 @@ export function overByOverSeries(innings) {
       cumRuns,
       cumWickets,
       runRate: cumRuns / ballsToOversDecimalForRR(balls),
-      last5OversRR: last5Runs / 5,
+      last5OversRuns: last5Runs,
+      last5OversRR: hasFullWindow ? last5Runs / 5 : null,
       day: o.day,
       session: o.session,
       ballNumber: o.ballNumber,

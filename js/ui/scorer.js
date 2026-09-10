@@ -36,6 +36,11 @@ function overRunsLabel(row) {
   return row.wicketInOver ? 'W' : 'M';
 }
 
+function last5OversLabel(row) {
+  if (row.last5OversRR === null) return '-';
+  return `${fmtRR(row.last5OversRR)} (${row.last5OversRuns})`;
+}
+
 function ordinal(n) {
   const rem100 = n % 100;
   if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
@@ -472,7 +477,7 @@ function oversTableCard(inn) {
             <table class="compact-table">
               <thead><tr><th>Ov</th><th>Score</th><th>RR</th><th>R</th><th>5ovr</th></tr></thead>
               <tbody>
-                ${col.map((r) => `<tr><td>${r.overNumber}</td><td>${r.cumRuns}/${r.cumWickets}</td><td>${fmtRR(r.runRate)}</td><td>${overRunsLabel(r)}</td><td>${fmtRR(r.last5OversRR)}</td></tr>`).join('')}
+                ${col.map((r) => `<tr><td>${r.overNumber}</td><td>${r.cumRuns}/${r.cumWickets}</td><td>${fmtRR(r.runRate)}</td><td>${overRunsLabel(r)}</td><td>${last5OversLabel(r)}</td></tr>`).join('')}
               </tbody>
             </table>
           </div>

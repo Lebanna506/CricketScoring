@@ -202,7 +202,7 @@ export function normalizeMatch(match) {
   }
 
   match.innings = match.innings || [];
-  match.innings.forEach(normalizeInnings);
+  match.innings.forEach((inn) => normalizeInnings(inn, match.currentSession));
 
   return match;
 }
@@ -217,7 +217,7 @@ function normalizeSessionRecord(value) {
   return emptySessionRecord();
 }
 
-function normalizeInnings(inn) {
+function normalizeInnings(inn, currentSession) {
   inn.declared = !!inn.declared;
   inn.followOn = !!inn.followOn;
   inn.overs = inn.overs || [];
@@ -241,11 +241,49 @@ function normalizeInnings(inn) {
   // and re-sorting on that would risk reassigning wicketNumber to a
   // different wicket than the one that actually ended the innings.
   inn.fallOfWickets.forEach((w, idx) => { w.wicketNumber = idx + 1; });
+  fillInWicketSessionTags(inn, currentSession);
   inn.milestonesLog = inn.milestonesLog || [];
   inn.currentBatsmen = Array.isArray(inn.currentBatsmen) && inn.currentBatsmen.length === 2
     ? inn.currentBatsmen
     : ['', ''];
   inn.currentBallNumber = inn.currentBallNumber || 1;
+}
+
+/**
+ * A wicket's day/session is normally captured the moment it's recorded, but
+ * older saved matches (from before that was tracked) have fall-of-wicket
+ * entries with no day/session at all. Defaulting those blindly to day
+ * 1/morning silently misattributes anything that didn't actually happen
+ * then - e.g. a match's most recent wicket, recorded on day 2, was getting
+ * counted into day 1's tally. Infer a much better answer from nearby overs
+ * instead, which have always captured this field: the over the wicket fell
+ * during if it's been entered, otherwise whichever entered over is closest
+ * (before, then after); only fall back to the match's current session, then
+ * a hard default, when this innings has no overs at all to go on.
+ */
+function fillInWicketSessionTags(inn, currentSession) {
+  inn.fallOfWickets.forEach((w) => {
+    const exact = inn.overs.find((o) => o.overNumber === w.oversCompleted + 1);
+    if (exact) {
+      w.day = exact.day;
+      w.session = exact.session;
+      return;
+    }
+    if (w.day && w.session) return; // captured at creation time - trust it
+    const before = inn.overs.filter((o) => o.overNumber <= w.oversCompleted).sort((a, b) => b.overNumber - a.overNumber)[0];
+    const after = inn.overs.filter((o) => o.overNumber > w.oversCompleted).sort((a, b) => a.overNumber - b.overNumber)[0];
+    const source = before || after;
+    if (source) {
+      w.day = source.day;
+      w.session = source.session;
+    } else if (currentSession) {
+      w.day = currentSession.day;
+      w.session = currentSession.session;
+    } else {
+      w.day = w.day || 1;
+      w.session = w.session || 'morning';
+    }
+  });
 }
 
 function normalizeFow(w) {
@@ -259,6 +297,7 @@ function normalizeFow(w) {
   // Earlier versions called this field batsmanOut.
   w.outBatsman = w.outBatsman || w.batsmanOut || '';
   w.inBatsman = w.inBatsman || '';
-  w.day = w.day || 1;
-  w.session = w.session || 'morning';
+  // day/session are intentionally left untouched here (possibly still
+  // missing) - see fillInWicketSessionTags, which infers a much better
+  // default than a hardcoded day 1/morning for legacy records.
 }
