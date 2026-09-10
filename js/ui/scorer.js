@@ -856,6 +856,37 @@ async function handleWicket(match, inn, battingLineup) {
   newPair[step1.outIndex] = inBatsman;
   inn.currentBatsmen = newPair;
 
+  if (wicketNumber >= 10) {
+    // The innings just ended, so this over will never get entered via the
+    // numpad the normal way - there's no more batting left to log runs for.
+    // If the wicket fell on the over's last ball, the over is actually
+    // complete and deserves a real entry (otherwise it'd be silently
+    // missing from the Overs table, relying only on currentScore()'s
+    // trailing-wicket adjustment for the total). Independently, if the
+    // score crossed a new milestone here, that would otherwise never get
+    // logged at all, since only saveOver() normally checks for milestones.
+    // Use currentScore()'s runs (not a raw sum of entered overs) as the
+    // "before this wicket" baseline - if an earlier wicket in this same
+    // innings was itself already trusted ahead of the entered overs (e.g.
+    // wicket 9 recorded a score with its over never separately completed),
+    // the raw over sum would understate it and wildly overcount this over's
+    // runs / falsely re-cross milestones already reached.
+    const priorRuns = cur.runs;
+    if (step1.ball === 6) {
+      inn.overs.push(newOverEntry({
+        overNumber: step1.oversCompleted + 1,
+        runs: step1.score - priorRuns,
+        day: match.currentSession.day,
+        session: match.currentSession.session,
+        ballNumber: inn.currentBallNumber,
+      }));
+    }
+    const crossed = crossedMilestones(priorRuns, step1.score, inn.milestonesLog);
+    if (crossed.length) {
+      await collectMilestones(match, inn, crossed, step1.oversCompleted + 1);
+    }
+  }
+
   await persist(match);
 }
 
