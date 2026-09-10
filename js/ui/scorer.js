@@ -697,21 +697,34 @@ async function saveOver(match, inn, runs) {
 }
 
 function openCustomRunsModal(match, inn, rerender) {
+  const gridNumbers = [];
+  for (let n = 11; n <= 36; n++) gridNumbers.push(n);
+  const commit = async (runs) => {
+    closeModal();
+    await saveOver(match, inn, runs);
+    rerender();
+  };
   const html = `
     <h2>Runs this over</h2>
+    <p class="meta">Pick the total, or type it below if it was higher than 36.</p>
+    <div class="runs-grid">
+      ${gridNumbers.map((n) => `<button type="button" class="ball-btn" data-runs="${n}">${n}</button>`).join('')}
+    </div>
     <form id="custom-runs-form">
-      <div class="field"><label>Total runs (11+)</label><input name="runs" type="number" min="11" value="11" required autofocus /></div>
+      <div class="field"><label>Or type the exact total</label><input name="runs" type="number" min="11" placeholder="e.g. 40" /></div>
       <button type="submit" class="btn primary big">Save over</button>
     </form>
   `;
   openModal(html, {
     onMount: (m) => {
-      m.querySelector('#custom-runs-form').addEventListener('submit', async (e) => {
+      m.querySelectorAll('.runs-grid .ball-btn').forEach((btn) => {
+        btn.addEventListener('click', () => commit(Number(btn.dataset.runs)));
+      });
+      m.querySelector('#custom-runs-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const runs = Number(new FormData(e.target).get('runs')) || 0;
-        closeModal();
-        await saveOver(match, inn, runs);
-        rerender();
+        if (runs < 11) return;
+        commit(runs);
       });
     },
   });

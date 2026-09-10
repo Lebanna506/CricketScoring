@@ -287,6 +287,10 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
 }
 .ball-btn.selected { background: var(--accent-2); border-color: var(--accent-2); color: #06202f; font-weight: 600; }
 
+/* Runs-over-10 picker: 11-36 in a grid, with a text field underneath for anything higher. */
+.runs-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-bottom: 16px; }
+.runs-grid .ball-btn:active { background: var(--accent-2); color: #06202f; }
+
 /* Overs card: shrink to fit its columns instead of stretching to fill dash-right. */
 .overs-card-fit { align-self: flex-start; width: fit-content; max-width: 100%; }
 
