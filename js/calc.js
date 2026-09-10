@@ -333,7 +333,6 @@ export function matchSessionSummary(match) {
   return [...map.values()].map((e) => ({
     ...e,
     overs: ballsToOverString(e.ballsBowled),
-    oversDecimal: ballsToOversDecimalForRR(e.ballsBowled),
     runRate: e.ballsBowled > 0 ? e.runs / ballsToOversDecimalForRR(e.ballsBowled) : 0,
   })).sort((a, b) => (a.day - b.day) || (SESSIONS.indexOf(a.session) - SESSIONS.indexOf(b.session)));
 }
@@ -400,7 +399,7 @@ export function daySummaries(match) {
       runs: d.runs,
       wickets: d.wickets,
       overs: ballsToOverString(d.ballsBowled),
-      oversDecimal: ballsToOversDecimalForRR(d.ballsBowled),
+      ballsBowled: d.ballsBowled,
       runRate: d.ballsBowled > 0 ? d.runs / ballsToOversDecimalForRR(d.ballsBowled) : 0,
       inningsNumbers: [...d.inningsTouched].sort(),
     }));

@@ -2,7 +2,7 @@ import { loadMatch, saveMatch, deleteMatch } from '../storage.js';
 import { exportMatch } from '../fileio.js';
 import {
   newOverEntry, newFowEntry, newInnings, teamName, SESSIONS, advanceSession,
-  inningsOrdinalForTeam, emptySessionRecord,
+  inningsOrdinalForTeam, emptySessionRecord, ballsToOverString,
 } from '../model.js';
 import {
   currentScore, isInningsClosed, partnerships, bestPartnership, teamMilestones,
@@ -143,11 +143,16 @@ function inningsSubTabLabel(match, number) {
   return `${teamName(match, side)} ${ordinal} Innings`;
 }
 
-function oversDiffSpan(actualDecimal, expected) {
-  const diff = actualDecimal - expected;
-  const cls = diff > 0.05 ? 'badge-ahead' : diff < -0.05 ? 'badge-behind' : 'badge-exact';
-  const sign = diff > 0 ? '+' : '';
-  return `<span class="${cls}">(${sign}${diff.toFixed(1)})</span>`;
+// Cricket overs aren't true decimal (each over is 6 balls, not 10), so the
+// gap between actual and expected overs has to be computed in balls and
+// converted back to over.ball notation - subtracting the decimal forms
+// directly (e.g. "72.5" as 72.5) gives a number that looks plausible but is
+// wrong by a few tenths.
+function oversDiffSpan(actualBalls, expectedOvers) {
+  const diffBalls = actualBalls - expectedOvers * 6;
+  const cls = diffBalls > 0 ? 'badge-ahead' : diffBalls < 0 ? 'badge-behind' : 'badge-exact';
+  const sign = diffBalls > 0 ? '+' : diffBalls < 0 ? '-' : '';
+  return `<span class="${cls}">(${sign}${ballsToOverString(Math.abs(diffBalls))})</span>`;
 }
 
 function ensureDayRecord(match, dayNumber) {
@@ -1024,7 +1029,7 @@ function renderSessionsTab(el, match, rerender) {
                 return `<tr class="${rowClass}"><td>${r.day}</td><td>${cap(r.session)}</td><td colspan="4" class="meta">Session lost</td></tr>`;
               }
               const expected = expectedOversForSession(match, r.day, r.session);
-              return `<tr class="${rowClass}"><td>${r.day}</td><td>${cap(r.session)}</td><td>${r.runs}</td><td>${r.wickets}</td><td>${r.overs} ${oversDiffSpan(r.oversDecimal, expected)}</td><td>${fmtRR(r.runRate)}</td></tr>`;
+              return `<tr class="${rowClass}"><td>${r.day}</td><td>${cap(r.session)}</td><td>${r.runs}</td><td>${r.wickets}</td><td>${r.overs} ${oversDiffSpan(r.ballsBowled, expected)}</td><td>${fmtRR(r.runRate)}</td></tr>`;
             }).join('') || '<tr><td colspan="6" class="meta">No play recorded yet</td></tr>'}
           </tbody>
         </table>
@@ -1038,7 +1043,7 @@ function renderSessionsTab(el, match, rerender) {
           <tbody>
             ${dayRows.map((d) => {
               const expected = expectedOversForDay(match, d.day);
-              return `<tr><td>${d.day}</td><td>${d.runs}</td><td>${d.wickets}</td><td>${d.overs} ${oversDiffSpan(d.oversDecimal, expected)}</td><td>${fmtRR(d.runRate)}</td></tr>`;
+              return `<tr><td>${d.day}</td><td>${d.runs}</td><td>${d.wickets}</td><td>${d.overs} ${oversDiffSpan(d.ballsBowled, expected)}</td><td>${fmtRR(d.runRate)}</td></tr>`;
             }).join('') || '<tr><td colspan="5" class="meta">No play recorded yet</td></tr>'}
           </tbody>
         </table>
