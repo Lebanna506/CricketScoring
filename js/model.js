@@ -160,6 +160,13 @@ export function teamName(match, side) {
  * filling in any fields that didn't exist in earlier versions of the app
  * (e.g. matches saved before the Innings-tab rewrite). Safe to call on an
  * already-current match - it's a no-op in that case.
+ *
+ * Mutates in place and preserves object identity for anything that's
+ * already there (never replaces match.innings, an innings object, an over,
+ * etc. with a copy) - code elsewhere holds onto references like `inn`
+ * across multiple saves within one render cycle, and swapping in a new
+ * object on every save would silently detach those references, losing
+ * whatever gets written through them afterwards.
  */
 export function normalizeMatch(match) {
   if (!match || typeof match !== 'object') return match;
@@ -168,72 +175,73 @@ export function normalizeMatch(match) {
   match.lineups.home = match.lineups.home || [];
   match.lineups.away = match.lineups.away || [];
   match.result = match.result || { status: 'in_progress', text: '', winner: null, manualNote: '' };
-  match.currentSession = match.currentSession && match.currentSession.day
-    ? match.currentSession
-    : { day: 1, session: 'morning' };
+  if (!match.currentSession || !match.currentSession.day) {
+    match.currentSession = { day: 1, session: 'morning' };
+  }
 
-  match.days = (match.days || []).map((d) => ({
-    dayNumber: d.dayNumber,
-    date: d.date ?? null,
-    sessions: d.sessions ? {
-      morning: normalizeSessionRecord(d.sessions.morning),
-      afternoon: normalizeSessionRecord(d.sessions.afternoon),
-      evening: normalizeSessionRecord(d.sessions.evening),
-    } : {
+  match.days = match.days || [];
+  for (const d of match.days) {
+    if (!d.sessions) {
       // Earlier versions stored a single "minutes lost" number per session
       // (under `weather`) instead of {lostMinutes, lost}.
-      morning: normalizeSessionRecord(d.weather?.morning),
-      afternoon: normalizeSessionRecord(d.weather?.afternoon),
-      evening: normalizeSessionRecord(d.weather?.evening),
-    },
-  }));
+      d.sessions = {
+        morning: normalizeSessionRecord(d.weather?.morning),
+        afternoon: normalizeSessionRecord(d.weather?.afternoon),
+        evening: normalizeSessionRecord(d.weather?.evening),
+      };
+    } else {
+      d.sessions.morning = normalizeSessionRecord(d.sessions.morning);
+      d.sessions.afternoon = normalizeSessionRecord(d.sessions.afternoon);
+      d.sessions.evening = normalizeSessionRecord(d.sessions.evening);
+    }
+  }
 
-  match.innings = (match.innings || []).map(normalizeInnings);
+  match.innings = match.innings || [];
+  match.innings.forEach(normalizeInnings);
 
   return match;
 }
 
 function normalizeSessionRecord(value) {
   if (value && typeof value === 'object') {
-    return { lostMinutes: Number(value.lostMinutes) || 0, lost: !!value.lost };
+    value.lostMinutes = Number(value.lostMinutes) || 0;
+    value.lost = !!value.lost;
+    return value;
   }
   if (typeof value === 'number') return { lostMinutes: value, lost: false };
   return emptySessionRecord();
 }
 
 function normalizeInnings(inn) {
-  return {
-    number: inn.number,
-    declared: !!inn.declared,
-    followOn: !!inn.followOn,
-    overs: (inn.overs || []).map((o, idx) => ({
-      id: o.id || uid('over'),
-      overNumber: o.overNumber ?? idx + 1,
-      runs: Number(o.runs) || 0,
-      day: o.day || 1,
-      session: o.session || 'morning',
-      ballNumber: o.ballNumber || 1,
-    })),
-    fallOfWickets: (inn.fallOfWickets || []).map(normalizeFow),
-    milestonesLog: inn.milestonesLog || [],
-    currentBatsmen: Array.isArray(inn.currentBatsmen) && inn.currentBatsmen.length === 2
-      ? inn.currentBatsmen
-      : ['', ''],
-    currentBallNumber: inn.currentBallNumber || 1,
-  };
+  inn.declared = !!inn.declared;
+  inn.followOn = !!inn.followOn;
+  inn.overs = inn.overs || [];
+  inn.overs.forEach((o, idx) => {
+    o.id = o.id || uid('over');
+    o.overNumber = o.overNumber ?? idx + 1;
+    o.runs = Number(o.runs) || 0;
+    o.day = o.day || 1;
+    o.session = o.session || 'morning';
+    o.ballNumber = o.ballNumber || 1;
+  });
+  inn.fallOfWickets = inn.fallOfWickets || [];
+  inn.fallOfWickets.forEach(normalizeFow);
+  inn.milestonesLog = inn.milestonesLog || [];
+  inn.currentBatsmen = Array.isArray(inn.currentBatsmen) && inn.currentBatsmen.length === 2
+    ? inn.currentBatsmen
+    : ['', ''];
+  inn.currentBallNumber = inn.currentBallNumber || 1;
 }
 
 function normalizeFow(w, idx) {
-  return {
-    id: w.id || uid('fow'),
-    wicketNumber: w.wicketNumber ?? idx + 1,
-    oversCompleted: w.oversCompleted ?? w.overNumber ?? 0,
-    ball: Number(w.ball) || 0,
-    score: Number(w.score) || 0,
-    batsman1: w.batsman1 || '',
-    batsman2: w.batsman2 || '',
-    // Earlier versions called this field batsmanOut.
-    outBatsman: w.outBatsman || w.batsmanOut || '',
-    inBatsman: w.inBatsman || '',
-  };
+  w.id = w.id || uid('fow');
+  w.wicketNumber = w.wicketNumber ?? idx + 1;
+  w.oversCompleted = w.oversCompleted ?? w.overNumber ?? 0;
+  w.ball = Number(w.ball) || 0;
+  w.score = Number(w.score) || 0;
+  w.batsman1 = w.batsman1 || '';
+  w.batsman2 = w.batsman2 || '';
+  // Earlier versions called this field batsmanOut.
+  w.outBatsman = w.outBatsman || w.batsmanOut || '';
+  w.inBatsman = w.inBatsman || '';
 }

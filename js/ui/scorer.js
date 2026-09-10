@@ -167,7 +167,7 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
     if (btn) navigate(`#/match/${match.id}/innings/${btn.dataset.subtab}`);
   });
 
-  wireEditableNames(wrap, match, inn, rerender, battingLineup);
+  const editState = wireEditableNames(wrap, match, inn, rerender, battingLineup);
 
   const rrrInput = wrap.querySelector('#overs-remaining');
   if (rrrInput) {
@@ -180,6 +180,12 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
   wrap.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
+    // If a name picker is still open, force it to commit and finish saving
+    // before this action starts - otherwise the two saves can race and the
+    // picker's (now-stale) rerender can land last and undo this action.
+    const openEditor = wrap.querySelector('.editable-name-input');
+    if (openEditor) openEditor.blur();
+    if (editState.pending) await editState.pending;
     const action = btn.dataset.action;
 
     if (action === 'set-runs') {
@@ -415,8 +421,18 @@ function editableNameSpan(name, colorClass, dataAttrs) {
   return `<span class="editable-name ${colorClass}" ${attrs}>${label}</span>`;
 }
 
-/** Click any batsman name (current pair or a historical fall-of-wicket entry) to rename it. */
+/**
+ * Click any batsman name (current pair or a historical fall-of-wicket entry)
+ * to rename it. Returns a small state object exposing `.pending` - the
+ * in-flight save promise for whichever name is currently being edited, if
+ * any - so callers can await it before starting another action. Without
+ * that, a still-open picker's save and a newly-started action's save can
+ * race, and whichever one's rerender lands last silently wins, discarding
+ * the other.
+ */
 function wireEditableNames(wrap, match, inn, rerender, battingLineup) {
+  const state = { pending: null };
+
   wrap.querySelectorAll('.editable-name').forEach((span) => {
     span.addEventListener('click', () => {
       const isCurrentRow = span.dataset.row === 'current';
@@ -437,6 +453,7 @@ function wireEditableNames(wrap, match, inn, rerender, battingLineup) {
           }
         }
         await persist(match);
+        state.pending = null;
         rerender();
       };
 
@@ -457,14 +474,11 @@ function wireEditableNames(wrap, match, inn, rerender, battingLineup) {
         });
         span.replaceWith(select);
         select.focus();
-        let committed = false;
-        select.addEventListener('change', () => {
-          committed = true;
-          commit(select.value);
-        });
-        select.addEventListener('blur', () => {
-          if (!committed) rerender();
-        }, { once: true });
+        // Commit on blur only (not on every 'change') - committing mid-selection
+        // would tear down and rebuild the DOM while the browser's native picker
+        // is still in the middle of the user's interaction, e.g. keyboard
+        // navigation firing several 'change' events before a final choice.
+        select.addEventListener('blur', () => { state.pending = commit(select.value); }, { once: true });
       } else {
         const input = document.createElement('input');
         input.type = 'text';
@@ -477,10 +491,12 @@ function wireEditableNames(wrap, match, inn, rerender, battingLineup) {
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
         });
-        input.addEventListener('blur', () => commit(input.value.trim()), { once: true });
+        input.addEventListener('blur', () => { state.pending = commit(input.value.trim()); }, { once: true });
       }
     });
   });
+
+  return state;
 }
 
 function milestonesCardInnings(inn) {
