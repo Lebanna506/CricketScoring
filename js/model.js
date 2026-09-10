@@ -226,6 +226,16 @@ function normalizeInnings(inn) {
   });
   inn.fallOfWickets = inn.fallOfWickets || [];
   inn.fallOfWickets.forEach(normalizeFow);
+  // Always renumber by array position (the order wickets were actually
+  // recorded in - fallOfWickets is only ever appended to) rather than
+  // trusting stored wicketNumber values. Removing an entry from the middle
+  // (e.g. via Undo) otherwise leaves a gap, and a freshly-computed "current
+  // partnership" number can then collide with a stale one past the gap.
+  // Note: this intentionally does NOT re-sort by over.ball - a wicket's
+  // recorded timestamp can be edited/out of order (e.g. correcting a typo),
+  // and re-sorting on that would risk reassigning wicketNumber to a
+  // different wicket than the one that actually ended the innings.
+  inn.fallOfWickets.forEach((w, idx) => { w.wicketNumber = idx + 1; });
   inn.milestonesLog = inn.milestonesLog || [];
   inn.currentBatsmen = Array.isArray(inn.currentBatsmen) && inn.currentBatsmen.length === 2
     ? inn.currentBatsmen
@@ -233,9 +243,9 @@ function normalizeInnings(inn) {
   inn.currentBallNumber = inn.currentBallNumber || 1;
 }
 
-function normalizeFow(w, idx) {
+function normalizeFow(w) {
   w.id = w.id || uid('fow');
-  w.wicketNumber = w.wicketNumber ?? idx + 1;
+  // wicketNumber is reassigned afterwards in chronological order - see normalizeInnings.
   w.oversCompleted = w.oversCompleted ?? w.overNumber ?? 0;
   w.ball = Number(w.ball) || 0;
   w.score = Number(w.score) || 0;

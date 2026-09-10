@@ -344,7 +344,20 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
       const lastOver = overs[overs.length - 1];
       if (lastOver && confirm(`Remove over ${lastOver.overNumber} (${lastOver.runs} runs)?`)) {
         inn.overs = inn.overs.filter((o) => o.id !== lastOver.id);
+        const removedWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 === lastOver.overNumber);
         inn.fallOfWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 !== lastOver.overNumber);
+        // Removing a wicket must also undo the batsman substitution it caused -
+        // otherwise the incoming batsman (or, for the 10th wicket, a blank slot)
+        // stays "in" with no matching fall-of-wicket record, and the outgoing
+        // batsman silently vanishes from the current pair. Match by which slot
+        // (batsman1/batsman2) the wicket actually came from, not by searching
+        // for the incoming name, so this also works for the all-out 10th wicket
+        // where there was no incoming batsman to search for. Undo in reverse
+        // ball order so a multi-wicket over unwinds in the order it happened.
+        [...removedWickets].sort((a, b) => b.ball - a.ball).forEach((w) => {
+          const idx = w.batsman2 === w.outBatsman ? 1 : 0;
+          inn.currentBatsmen[idx] = w.outBatsman;
+        });
         await persist(match);
         rerender();
       }

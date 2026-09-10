@@ -151,8 +151,12 @@ export function partnerships(innings) {
 
   const cur = currentScore(innings);
   if (!isInningsClosed(innings) && cur.wickets < 10 && cur.balls > 0) {
+    // If the most recent logged wicket is further along than the overs
+    // entered so far (e.g. a wicket was recorded before its over's runs
+    // were caught up on), the "current" partnership would briefly compute
+    // as negative - clamp it to 0 rather than show something nonsensical.
     const ballsFaced = Math.max(0, cur.balls - prevBalls);
-    const runs = cur.runs - prevScore;
+    const runs = Math.max(0, cur.runs - prevScore);
     results.push({
       wicketNumber: cur.wickets + 1,
       batsman1: innings.currentBatsmen[0] || 'Batsman 1',
