@@ -245,13 +245,15 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
       </div>
       <div class="dash-right">
         <div class="score-and-pad">
-          ${scoreHeroCard(match, inn)}
+          <div class="score-col">
+            ${scoreHeroCard(match, inn)}
+            <div class="grid cols-3">
+              ${milestonesCardInnings(inn)}
+              ${centuriesCardInnings(inn)}
+              ${ballSummaryCard(inn)}
+            </div>
+          </div>
           ${isActive && !closed ? sidePanelCard(inn) : ''}
-        </div>
-        <div class="grid cols-3">
-          ${milestonesCardInnings(inn)}
-          ${centuriesCardInnings(inn)}
-          ${ballSummaryCard(inn)}
         </div>
         ${inn.number === 4 ? requiredRunRateCard(match, inn) : ''}
         ${isActive && closed ? nextInningsCard(match, inn) : ''}
