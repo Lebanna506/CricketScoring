@@ -37,6 +37,53 @@ function chunkArray(arr, size) {
   return out;
 }
 
+// --- Keyboard quick-entry: an opt-in toggle so a PC/iPad keyboard's number
+// row can log an over as fast as tapping the pad - handy for catching up on
+// overs entered late. Only one listener is ever live at a time.
+
+const KBD_ENTRY_KEY = 'cricket-scorer-kbd-entry';
+let activeKeydownHandler = null;
+
+function getKeyboardEntryEnabled() {
+  try { return localStorage.getItem(KBD_ENTRY_KEY) === '1'; } catch { return false; }
+}
+function setKeyboardEntryEnabled(value) {
+  try { localStorage.setItem(KBD_ENTRY_KEY, value ? '1' : '0'); } catch { /* private mode etc - just won't persist */ }
+}
+
+function isTypingField(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (tag === 'INPUT') {
+    const type = (el.type || 'text').toLowerCase();
+    return !['checkbox', 'radio', 'button', 'submit', 'reset', 'range'].includes(type);
+  }
+  return false;
+}
+
+function teardownKeyboardEntry() {
+  if (activeKeydownHandler) {
+    document.removeEventListener('keydown', activeKeydownHandler);
+    activeKeydownHandler = null;
+  }
+}
+
+function setupKeyboardEntry(match, inn, rerender, enabled) {
+  teardownKeyboardEntry();
+  if (!enabled) return;
+  activeKeydownHandler = (e) => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isTypingField(e.target)) return;
+    if (document.querySelector('.modal-backdrop')) return;
+    if (isInningsClosed(inn)) return;
+    if (!/^[0-9]$/.test(e.key)) return;
+    e.preventDefault();
+    saveOver(match, inn, Number(e.key)).then(rerender);
+  };
+  document.addEventListener('keydown', activeKeydownHandler);
+}
+
 function inningsSubTabLabel(match, number) {
   const side = battingSideForInnings(match, number);
   const ordinal = inningsOrdinalForTeam(match, number) === 1 ? '1st' : '2nd';
@@ -92,6 +139,8 @@ export async function renderScorer(container, navigate, matchId, tab = 'innings'
   const contentEl = root.querySelector('#tab-content');
   const rerender = () => renderScorer(container, navigate, matchId, tab, sub);
 
+  if (tab !== 'innings') teardownKeyboardEntry();
+
   try {
     switch (tab) {
       case 'innings': renderInningsTab(contentEl, match, navigate, rerender, sub); break;
@@ -137,6 +186,12 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
   const battingSide = battingSideForInnings(match, inn.number);
   const battingLineup = match.lineups[battingSide] || [];
 
+  if (isActive && !closed) {
+    setupKeyboardEntry(match, inn, rerender, getKeyboardEntryEnabled());
+  } else {
+    teardownKeyboardEntry();
+  }
+
   wrap.innerHTML = `
     <div class="tabs sub-tabs" id="innings-subtabs">
       ${match.innings.map((i) => `<button data-subtab="${i.number}" class="${i.number === inn.number ? 'active' : ''}">${esc(inningsSubTabLabel(match, i.number))}</button>`).join('')}
@@ -168,6 +223,15 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
   });
 
   const editState = wireEditableNames(wrap, match, inn, rerender, battingLineup);
+
+  const kbdToggle = wrap.querySelector('#kbd-entry-toggle');
+  if (kbdToggle) {
+    kbdToggle.addEventListener('change', () => {
+      setKeyboardEntryEnabled(kbdToggle.checked);
+      setupKeyboardEntry(match, inn, rerender, kbdToggle.checked);
+      wrap.querySelector('.side-panel')?.classList.toggle('kbd-active', kbdToggle.checked);
+    });
+  }
 
   const rrrInput = wrap.querySelector('#overs-remaining');
   if (rrrInput) {
@@ -286,8 +350,9 @@ function sidePanelCard(inn) {
   const cur = currentScore(inn);
   const nextOver = sortedOvers(inn).length + 1;
   const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 'M', 10, '10+'];
+  const kbdOn = getKeyboardEntryEnabled();
   return `
-    <div class="card side-panel">
+    <div class="card side-panel ${kbdOn ? 'kbd-active' : ''}">
       <div class="meta" style="margin-bottom:6px;">Over ${nextOver} - runs</div>
       <div class="numpad-phone">
         ${keys.map((k) => {
@@ -296,6 +361,10 @@ function sidePanelCard(inn) {
           return `<button class="numpad-btn" data-action="set-runs" data-value="${k}">${k}</button>`;
         }).join('')}
       </div>
+      <label class="kbd-toggle">
+        <input type="checkbox" id="kbd-entry-toggle" ${kbdOn ? 'checked' : ''} />
+        Keyboard entry (press 0-9 to score, catching up on overs)
+      </label>
       <div class="btn-row side-actions">
         <button class="btn warn" data-action="wicket" ${cur.wickets >= 10 ? 'disabled' : ''}>Wicket</button>
         <button class="btn secondary" data-action="end-session">End Session</button>

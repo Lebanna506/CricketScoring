@@ -231,9 +231,20 @@ tr.highlight td { background: rgba(63, 166, 106, 0.12); }
 
 .score-and-pad { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 .score-card { flex: 1 1 220px; margin-bottom: 0; }
-.side-panel { flex: 0 0 auto; width: 100%; max-width: 240px; margin-bottom: 0; }
+.side-panel { flex: 0 0 auto; width: 100%; max-width: 240px; margin-bottom: 0; border-color: var(--border); transition: border-color 0.15s, box-shadow 0.15s; }
+.side-panel.kbd-active { border-color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2); }
 .side-actions { margin-top: 10px; }
 .side-actions .btn { padding: 7px 10px; font-size: 0.82rem; }
+
+.kbd-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  cursor: pointer;
+}
 
 /* Overs table split into columns of up to 50 rows each. */
 .overs-columns { display: flex; gap: 10px; flex-wrap: wrap; }
