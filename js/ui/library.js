@@ -1,6 +1,6 @@
 import { listMatches, deleteMatch, saveMatch } from '../storage.js';
 import { matchStatusText } from '../calc.js';
-import { esc, fmtDate, toast } from './common.js';
+import { esc, fmtDate, toast, confirmAction } from './common.js';
 import { importMatch } from '../fileio.js';
 
 export async function renderLibrary(container, navigate) {
@@ -55,7 +55,7 @@ export async function renderLibrary(container, navigate) {
     if (action === 'new-match') navigate('#/new');
     if (action === 'open') navigate(`#/match/${btn.dataset.id}/innings`);
     if (action === 'delete') {
-      if (confirm('Delete this match from this device? (Export it first if you want to keep a copy.)')) {
+      if (await confirmAction('Delete this match from this device? (Export it first if you want to keep a copy.)', { okLabel: 'Delete', danger: true })) {
         await deleteMatch(btn.dataset.id);
         renderLibrary(container, navigate);
       }

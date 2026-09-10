@@ -12,7 +12,7 @@ import {
   centuriesComparison, sessionRecord, expectedOversForSession, expectedOversForDay,
   battingSideForInnings, oppositeSide, availableBatsmen,
 } from '../calc.js';
-import { esc, fmtRR, toast, openModal, closeModal } from './common.js';
+import { esc, fmtRR, toast, openModal, closeModal, confirmAction } from './common.js';
 
 const TOP_TABS = [
   ['innings', 'Innings'],
@@ -325,21 +325,21 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
       rerender();
     }
     if (action === 'end-session') {
-      if (confirm(`End the ${cap(match.currentSession.session)} session (Day ${match.currentSession.day})? Overs from now on are tagged as the next session.`)) {
+      if (await confirmAction(`End the ${cap(match.currentSession.session)} session (Day ${match.currentSession.day})?`, { okLabel: 'End session' })) {
         match.currentSession = advanceSession(match.currentSession);
         await persist(match);
         rerender();
       }
     }
     if (action === 'new-ball') {
-      if (confirm('Take a new ball from the start of the next over?')) {
+      if (await confirmAction('Take a new ball from the start of the next over?', { okLabel: 'Take new ball' })) {
         inn.currentBallNumber += 1;
         await persist(match);
         rerender();
       }
     }
     if (action === 'mark-session-lost') {
-      if (confirm(`Mark the ${cap(match.currentSession.session)} session (Day ${match.currentSession.day}) as completely lost?`)) {
+      if (await confirmAction(`Mark the ${cap(match.currentSession.session)} session (Day ${match.currentSession.day}) as completely lost?`, { okLabel: 'Mark lost', danger: true })) {
         ensureDayRecord(match, match.currentSession.day).sessions[match.currentSession.session].lost = true;
         match.currentSession = advanceSession(match.currentSession);
         await persist(match);
@@ -348,7 +348,7 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
     }
     if (action === 'declare') {
       const sc = currentScore(inn);
-      if (confirm(`Declare ${teamName(match, battingSide)}'s innings closed at ${sc.runs}/${sc.wickets}?`)) {
+      if (await confirmAction(`Declare ${teamName(match, battingSide)}'s innings closed at ${sc.runs}/${sc.wickets}?`, { okLabel: 'Declare' })) {
         inn.declared = true;
         await persist(match);
         rerender();
@@ -357,7 +357,7 @@ function renderInningsTab(el, match, navigate, rerender, subParam) {
     if (action === 'undo') {
       const overs = sortedOvers(inn);
       const lastOver = overs[overs.length - 1];
-      if (lastOver && confirm(`Remove over ${lastOver.overNumber} (${lastOver.runs} runs)?`)) {
+      if (lastOver && await confirmAction(`Remove over ${lastOver.overNumber} (${lastOver.runs} runs)?`, { okLabel: 'Remove', danger: true })) {
         inn.overs = inn.overs.filter((o) => o.id !== lastOver.id);
         const removedWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 === lastOver.overNumber);
         inn.fallOfWickets = inn.fallOfWickets.filter((w) => w.oversCompleted + 1 !== lastOver.overNumber);
@@ -856,7 +856,10 @@ async function startNextInnings(match, navigate) {
     const lead = currentScore(i1).runs - currentScore(i2).runs;
     const threshold = followOnThreshold(match.scheduledDays);
     if (lead >= threshold) {
-      followOn = confirm(`${teamName(match, battingSideForInnings(match, 1))} lead by ${lead} runs (≥ ${threshold}). Enforce the follow-on?\n\nOK = enforce follow-on, Cancel = bat again normally.`);
+      followOn = await confirmAction(
+        `${teamName(match, battingSideForInnings(match, 1))} lead by ${lead} runs (≥ ${threshold}). Enforce the follow-on?`,
+        { okLabel: 'Enforce follow-on', cancelLabel: 'Bat again' },
+      );
     }
   }
   const inn = newInnings(match, nextNumber, { followOn });
@@ -1278,7 +1281,7 @@ function renderInfoTab(el, match, rerender, navigate) {
       }
     }
     if (btn.dataset.action === 'delete-match') {
-      if (confirm('Delete this match from this device? Export it first if you want to keep it.')) {
+      if (await confirmAction('Delete this match from this device? Export it first if you want to keep it.', { okLabel: 'Delete', danger: true })) {
         await deleteMatch(match.id);
         navigate('#/');
       }
